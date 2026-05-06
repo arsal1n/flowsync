@@ -1,21 +1,7 @@
-import MapView from "./components/MapView";
-import RouteInfo from "./components/RouteInfo";
-import { sampleRoute } from "./data/sampleRoute";
+import MapPage from "./pages/MapPage";
 
 function App() {
-  return (
-    <div style={{ padding: "24px", fontFamily: "Arial, sans-serif" }}>
-      <h1>FlowSync Maps & Routing</h1>
-
-      <p>
-        This page shows the map, start point, destination, and a sample route.
-      </p>
-
-      <MapView />
-
-      <RouteInfo route={sampleRoute} />
-    </div>
-  );
+  return <MapPage />;
 }
 
 export default App;
