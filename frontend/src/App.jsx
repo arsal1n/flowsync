@@ -1,122 +1,125 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import "./index.css";
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <div className="app">
+      <nav className="navbar">
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
+          <h2>FlowSync DXB</h2>
+          <p>Smart Mobility for UAE</p>
+        </div>
+
+        <div className="nav-links">
+          <a href="#dashboard">Dashboard</a>
+          <a href="#trip">New Trip</a>
+          <a href="#routes">Routes</a>
+          <a href="#analytics">Analytics</a>
+        </div>
+      </nav>
+
+      <section className="hero">
+        <div>
+          <p className="tag">Adaptive Route Distribution</p>
+          <h1>Balance Dubai traffic with smarter route assignment.</h1>
+          <p className="hero-text">
+            FlowSync does not send every driver to the same fastest route.
+            It distributes vehicles across multiple optimal routes to reduce
+            congestion, time loss, fuel waste, and emissions.
           </p>
+          <button className="primary-btn">Find FlowSync Route</button>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
+        <div className="hero-card">
+          <h3>Live Traffic Balance</h3>
+          <div className="score">85%</div>
+          <p>Congestion optimization probability</p>
         </div>
       </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <section id="dashboard" className="grid">
+        <div className="card">
+          <h3>Total Trips</h3>
+          <h2>124</h2>
+          <p>Trip requests processed today</p>
+        </div>
+
+        <div className="card">
+          <h3>Congestion Reduced</h3>
+          <h2>18%</h2>
+          <p>Estimated city flow improvement</p>
+        </div>
+
+        <div className="card">
+          <h3>Avg Time Saved</h3>
+          <h2>7 min</h2>
+          <p>Per driver on assigned route</p>
+        </div>
+
+        <div className="card">
+          <h3>Fuel Saved</h3>
+          <h2>12.5 L</h2>
+          <p>Estimated daily reduction</p>
+        </div>
+      </section>
+
+      <section id="trip" className="panel">
+        <h2>New Trip Request</h2>
+
+        <div className="form-grid">
+          <input placeholder="Start Location e.g. Dubai Marina" />
+          <input placeholder="Destination e.g. Downtown Dubai" />
+          <select>
+            <option>Car</option>
+            <option>Taxi</option>
+            <option>Bus</option>
+          </select>
+          <button className="primary-btn">Find FlowSync Route</button>
+        </div>
+      </section>
+
+      <section id="routes" className="routes">
+        <div className="route-card danger">
+          <h3>Route A</h3>
+          <p>Fastest but crowded</p>
+          <h2>22 min</h2>
+          <span>Congestion: High</span>
+        </div>
+
+        <div className="route-card recommended">
+          <h3>Route B</h3>
+          <p>Recommended by FlowSync</p>
+          <h2>26 min</h2>
+          <span>Congestion: Balanced</span>
+        </div>
+
+        <div className="route-card safe">
+          <h3>Route C</h3>
+          <p>Longer but less congested</p>
+          <h2>30 min</h2>
+          <span>Congestion: Low</span>
+        </div>
+      </section>
+
+      <section id="analytics" className="panel">
+        <h2>Analytics Dashboard</h2>
+
+        <div className="analytics-row">
+          <div>
+            <p>Route A Users</p>
+            <h3>45</h3>
+          </div>
+          <div>
+            <p>Route B Users</p>
+            <h3>52</h3>
+          </div>
+          <div>
+            <p>Route C Users</p>
+            <h3>27</h3>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
 }
 
-export default App
+export default App;
