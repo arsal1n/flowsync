@@ -1,4 +1,5 @@
 import MapView from "./components/MapView";
+import RouteInfo from "./components/RouteInfo";
 import { sampleRoute } from "./data/sampleRoute";
 
 function App() {
@@ -12,12 +13,7 @@ function App() {
 
       <MapView />
 
-      <div style={{ marginTop: "20px" }}>
-        <h2>Route Recommendation</h2>
-        <p><strong>Recommended Route:</strong> {sampleRoute.routeName}</p>
-        <p><strong>Estimated Time:</strong> {sampleRoute.estimatedTime}</p>
-        <p><strong>Traffic Level:</strong> {sampleRoute.trafficLevel}</p>
-      </div>
+      <RouteInfo route={sampleRoute} />
     </div>
   );
 }
