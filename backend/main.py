@@ -1,9 +1,29 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from route_engine import get_recommended_route
 
-app = FastAPI(title="FlowSync Backend API")
+from route_engine import get_recommended_route
+from database import (
+    init_db,
+    save_trip_and_route,
+    get_dashboard_stats,
+    get_recent_trips
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(
+    title="FlowSync Backend API",
+    version="0.2.0",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,7 +43,9 @@ class TripRequest(BaseModel):
 @app.get("/")
 def home():
     return {
-        "message": "FlowSync backend is running"
+        "message": "FlowSync backend is running",
+        "version": "0.2.0",
+        "database": "SQLite connected"
     }
 
 
@@ -33,18 +55,28 @@ def recommend_route(trip: TripRequest):
         trip.start_location,
         trip.destination
     )
+
     result["vehicle_type"] = trip.vehicle_type
+
+    saved_record = save_trip_and_route(
+        trip.start_location,
+        trip.destination,
+        trip.vehicle_type,
+        result["recommended_route"]
+    )
+
+    result["database_record"] = saved_record
+
     return result
 
 
 @app.get("/api/dashboard")
 def dashboard():
+    return get_dashboard_stats()
+
+
+@app.get("/api/trips")
+def trips():
     return {
-        "total_trip_requests": 24,
-        "route_a_users": 12,
-        "route_b_users": 8,
-        "route_c_users": 4,
-        "estimated_congestion_reduction": "18%",
-        "average_time_saved": "7 minutes",
-        "fuel_saved_estimate": "2.4 liters"
+        "recent_trips": get_recent_trips()
     }
