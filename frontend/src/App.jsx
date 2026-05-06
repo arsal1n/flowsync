@@ -1,3 +1,6 @@
+// frontend/src/App.jsx
+
+import "./App.css";
 import MapPage from "./pages/MapPage";
 
 function App() {
