@@ -39,3 +39,4 @@ def get_dashboard_stats():
         "recommended_routes": [dict(row) for row in recommended_routes],
         "average_congestion_score": round(avg_congestion or 0, 2)
     }
+
