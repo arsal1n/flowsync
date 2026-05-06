@@ -3,9 +3,9 @@ import { getRecommendedRoute } from "../api";
 
 function TripRequest() {
   const [formData, setFormData] = useState({
-    startLocation: "",
+    start_location: "",
     destination: "",
-    vehicleType: "Car",
+    vehicle_type: "Car",
   });
 
   const [result, setResult] = useState(null);
@@ -23,15 +23,13 @@ function TripRequest() {
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (!formData.startLocation || !formData.destination) {
+    if (!formData.start_location || !formData.destination) {
       alert("Please enter both start location and destination.");
       return;
     }
 
     setLoading(true);
-
     const routeResult = await getRecommendedRoute(formData);
-
     setResult(routeResult);
     setLoading(false);
   }
@@ -42,8 +40,8 @@ function TripRequest() {
 
       <form className="form-grid" onSubmit={handleSubmit}>
         <input
-          name="startLocation"
-          value={formData.startLocation}
+          name="start_location"
+          value={formData.start_location}
           onChange={handleChange}
           placeholder="Start Location e.g. Dubai Marina"
         />
@@ -56,8 +54,8 @@ function TripRequest() {
         />
 
         <select
-          name="vehicleType"
-          value={formData.vehicleType}
+          name="vehicle_type"
+          value={formData.vehicle_type}
           onChange={handleChange}
         >
           <option>Car</option>
@@ -72,8 +70,16 @@ function TripRequest() {
 
       {result && (
         <div className="recommendation-box">
-          <h3>Recommended Route: {result.recommended_route}</h3>
-          <p>{result.reason}</p>
+          <div className="recommendation-header">
+            <div>
+              <h3>Recommended Route: {result.recommended_route}</h3>
+              <p>{result.reason}</p>
+            </div>
+
+            <span className="source-badge">
+              {result.source === "backend" ? "Backend Connected" : "Mock Data"}
+            </span>
+          </div>
 
           <div className="result-grid">
             {result.routes.map((route) => (

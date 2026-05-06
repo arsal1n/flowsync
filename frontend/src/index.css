@@ -391,3 +391,19 @@ input::placeholder {
 .blue-dot {
   background: cyan;
 }
+.recommendation-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.source-badge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0, 245, 255, 0.12);
+  border: 1px solid rgba(0, 245, 255, 0.5);
+  color: #00f5ff;
+  font-weight: bold;
+  white-space: nowrap;
+}
