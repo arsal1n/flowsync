@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { sampleRoute } from "../data/sampleRoute";
 
 delete L.Icon.Default.prototype._getIconUrl;
 
@@ -14,19 +15,10 @@ L.Icon.Default.mergeOptions({
 });
 
 function MapView() {
-  const startPoint = [25.2048, 55.2708];
-  const destinationPoint = [25.1972, 55.2744];
-
-  const routeLine = [
-    startPoint,
-    [25.2015, 55.272],
-    destinationPoint,
-  ];
-
   return (
     <div style={{ height: "500px", width: "100%", borderRadius: "16px", overflow: "hidden" }}>
       <MapContainer
-        center={startPoint}
+        center={sampleRoute.startPoint}
         zoom={13}
         style={{ height: "100%", width: "100%" }}
       >
@@ -35,15 +27,15 @@ function MapView() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <Marker position={startPoint}>
+        <Marker position={sampleRoute.startPoint}>
           <Popup>Start Location</Popup>
         </Marker>
 
-        <Marker position={destinationPoint}>
+        <Marker position={sampleRoute.destinationPoint}>
           <Popup>Destination</Popup>
         </Marker>
 
-        <Polyline positions={routeLine} />
+        <Polyline positions={sampleRoute.routeLine} />
       </MapContainer>
     </div>
   );

@@ -1,4 +1,5 @@
 import MapView from "./components/MapView";
+import { sampleRoute } from "./data/sampleRoute";
 
 function App() {
   return (
@@ -13,9 +14,9 @@ function App() {
 
       <div style={{ marginTop: "20px" }}>
         <h2>Route Recommendation</h2>
-        <p><strong>Recommended Route:</strong> Downtown Route</p>
-        <p><strong>Estimated Time:</strong> 18 minutes</p>
-        <p><strong>Traffic Level:</strong> Medium</p>
+        <p><strong>Recommended Route:</strong> {sampleRoute.routeName}</p>
+        <p><strong>Estimated Time:</strong> {sampleRoute.estimatedTime}</p>
+        <p><strong>Traffic Level:</strong> {sampleRoute.trafficLevel}</p>
       </div>
     </div>
   );
