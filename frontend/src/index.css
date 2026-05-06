@@ -203,3 +203,40 @@ input::placeholder {
     display: none;
   }
 }
+.recommendation-box {
+  margin-top: 22px;
+  padding: 22px;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 255, 136, 0.5);
+  background: rgba(0, 255, 136, 0.06);
+}
+
+.recommendation-box h3 {
+  color: #00ff99;
+  margin-top: 0;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.mini-route {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.selected-route {
+  border-color: #00ff99;
+  box-shadow: 0 0 18px rgba(0, 255, 136, 0.18);
+}
+
+@media (max-width: 900px) {
+  .result-grid {
+    grid-template-columns: 1fr;
+  }
+}
