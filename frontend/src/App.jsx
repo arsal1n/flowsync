@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import TripRequest from "./pages/TripRequest";
 import Analytics from "./pages/Analytics";
 import RouteCard from "./components/RouteCard";
+import MapView from "./components/MapView";
 
 function App() {
   return (
@@ -13,6 +14,8 @@ function App() {
       <Dashboard />
 
       <TripRequest />
+
+      <MapView />
 
       <section id="routes" className="routes">
         <RouteCard

@@ -240,3 +240,154 @@ input::placeholder {
     grid-template-columns: 1fr;
   }
 }
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.section-header p {
+  color: #a8b3c7;
+}
+
+.map-badge {
+  background: rgba(0, 255, 136, 0.12);
+  color: #00ff99;
+  border: 1px solid rgba(0, 255, 136, 0.5);
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-weight: bold;
+}
+
+.map-wrapper {
+  margin-top: 18px;
+  height: 420px;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 255, 200, 0.25);
+}
+
+.map-container {
+  height: 100%;
+  width: 100%;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 16px;
+  color: #c9d4e6;
+}
+
+.map-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.red-dot,
+.green-dot,
+.blue-dot {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.red-dot {
+  background: red;
+}
+
+.green-dot {
+  background: lime;
+}
+
+.blue-dot {
+  background: cyan;
+}
+.map-placeholder {
+  margin-top: 18px;
+  height: 320px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 255, 200, 0.35);
+  background:
+    linear-gradient(135deg, rgba(0, 255, 200, 0.12), rgba(0, 170, 255, 0.08)),
+    #07131a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.map-placeholder h3 {
+  color: #00ff99;
+}
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.section-header p {
+  color: #a8b3c7;
+}
+
+.map-badge {
+  background: rgba(0, 255, 136, 0.12);
+  color: #00ff99;
+  border: 1px solid rgba(0, 255, 136, 0.5);
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-weight: bold;
+}
+
+.map-wrapper {
+  margin-top: 18px;
+  height: 420px;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 255, 200, 0.25);
+}
+
+.map-container {
+  height: 100%;
+  width: 100%;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 16px;
+  color: #c9d4e6;
+}
+
+.map-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.red-dot,
+.green-dot,
+.blue-dot {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.red-dot {
+  background: red;
+}
+
+.green-dot {
+  background: lime;
+}
+
+.blue-dot {
+  background: cyan;
+}
