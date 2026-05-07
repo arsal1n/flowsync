@@ -646,3 +646,7 @@ def update_user_preferences(request: UserPreferencesRequest):
 from navigation_routes import register_navigation_routes
 
 register_navigation_routes(app)
+
+from trip_lifecycle_routes import register_trip_lifecycle_routes
+
+register_trip_lifecycle_routes(app)
