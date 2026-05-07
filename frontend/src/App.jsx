@@ -8,7 +8,17 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./index.css";
-import { getRecommendedRoute, getDashboardData, getTrips } from "./api";
+
+import {
+  getBackendStatus,
+  getFeatures,
+  getRecommendedRoute,
+  getDashboardData,
+  getTrips,
+  getParkingPrediction,
+  getDriverAlerts,
+  getMobileHome,
+} from "./api";
 
 const routeA = [
   [25.0800, 55.1400],
@@ -164,28 +174,46 @@ function MobileDashboard({ onLogout }) {
   const [apiSource, setApiSource] = useState("checking");
   const [dashboardData, setDashboardData] = useState(null);
   const [trips, setTrips] = useState([]);
+  const [backendStatus, setBackendStatus] = useState(null);
+const [features, setFeatures] = useState([]);
+const [parkingPrediction, setParkingPrediction] = useState(null);
+const [alerts, setAlerts] = useState([]);
+const [mobileHome, setMobileHome] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadBackendData() {
-      const tripRequest = {
-        start_location: "Dubai Mall",
-        destination: "Dubai Marina",
-        vehicle_type: "car",
-      };
+  const status = await getBackendStatus();
 
-      const routeData = await getRecommendedRoute(tripRequest);
-      const dashboard = await getDashboardData();
-      const recentTrips = await getTrips();
+  const featureResult = await getFeatures();
 
-      if (!isMounted) return;
+  const routeData = await getRecommendedRoute({
+    start_location: "Dubai Mall",
+    destination: "Dubai Marina",
+    vehicle_type: "car",
+    route_preference: "balanced",
+    user_role: "driver",
+  });
 
-      setRouteResult(routeData);
-      setApiSource(routeData.source);
-      setDashboardData(dashboard.data);
-      setTrips(recentTrips.data || []);
-    }
+  const dashboard = await getDashboardData();
+  const recentTrips = await getTrips();
+  const parking = await getParkingPrediction("Dubai Mall");
+  const driverAlerts = await getDriverAlerts();
+  const mobileHomeData = await getMobileHome("demo-driver");
+
+  if (!isMounted) return;
+
+  setBackendStatus(status.data);
+  setFeatures(featureResult.data?.features || []);
+  setRouteResult(routeData);
+  setApiSource(routeData.source);
+  setDashboardData(dashboard.data);
+  setTrips(recentTrips.data || []);
+  setParkingPrediction(parking.data);
+  setAlerts(driverAlerts.data || []);
+  setMobileHome(mobileHomeData.data);
+}
 
     loadBackendData();
 
