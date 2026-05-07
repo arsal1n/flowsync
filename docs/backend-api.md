@@ -1299,3 +1299,67 @@ FLOWSYNC_GEOCODING_API_KEY=
 FLOWSYNC_ROUTING_BASE_URL=
 FLOWSYNC_GEOCODING_BASE_URL=
 FLOWSYNC_MOCK_FALLBACK=true
+
+---
+
+# Live Updates
+
+The backend now supports polling-based live updates for frontend, mobile, admin control room, navigation, and emergency dashboards.
+
+## GET /api/live/system
+
+Returns live backend system status.
+
+Includes:
+
+- backend status
+- provider status
+- active navigation session count
+- active trip count
+- completed trip count
+- recommended polling interval
+
+## GET /api/live/dashboard
+
+Returns live dashboard data for frontend refresh.
+
+Includes:
+
+- main dashboard stats
+- route loads
+- active navigation sessions
+- trip lifecycle dashboard
+- latest sensor readings
+- driver alerts
+
+## GET /api/live/navigation
+
+Returns live active navigation sessions.
+
+Frontend use:
+
+- active trip map
+- user navigation status
+- driver progress tracking
+
+## GET /api/live/navigation/{session_id}
+
+Returns live status for one navigation session.
+
+Frontend use:
+
+- turn-by-turn refresh
+- current instruction
+- remaining steps
+- route alerts
+- route incidents
+
+## GET /api/live/admin
+
+Protected endpoint.
+
+Required roles:
+
+```text
+admin
+rta_operator

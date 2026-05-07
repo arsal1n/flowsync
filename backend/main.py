@@ -656,3 +656,7 @@ register_trip_lifecycle_routes(app)
 from auth_routes import register_auth_routes
 
 register_auth_routes(app)
+
+from live_update_routes import register_live_update_routes
+
+register_live_update_routes(app)

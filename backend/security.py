@@ -81,6 +81,12 @@ def get_required_roles(path: str, method: str) -> Optional[Set[str]]:
     if path.startswith("/api/priority"):
         return VIP_ROLES
 
+    if path.startswith("/api/live/admin"):
+        return ADMIN_ROLES
+
+    if path.startswith("/api/live/emergency"):
+        return EMERGENCY_ROLES
+
     return None
 
 
