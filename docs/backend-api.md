@@ -1,45 +1,33 @@
-## Demo Tools
+@"
 
-These endpoints help prepare a clean teacher demo.
+---
 
-### GET /api/demo/status
+## Demo Tools Quick Reference
 
-Shows current demo database status, including:
+Backend version 1.0.1 added demo preparation endpoints.
 
-- dashboard data
-- route loads
-- recent trips
-- sensor readings
-- alerts
-- events
-- incidents
-- reports
-- parking zones
-- emergency vehicles
-- table counts
+### Demo Endpoints
 
-### POST /api/demo/reset
+- GET /api/demo/status
+- POST /api/demo/reset
+- POST /api/demo/seed
 
-Clears demo database data and resets demo tables.
+Use POST /api/demo/reset before the teacher demo to clear old local test data.
 
-Use this before starting a clean demo.
+Use POST /api/demo/seed to load clean sample demo data for:
 
-### POST /api/demo/seed
-
-Adds clean sample demo data including:
-
-- sample trips
+- trips
 - route assignments
-- traffic sensor readings
-- parking sensor readings
+- traffic sensors
+- parking sensors
 - driver alerts
-- event simulation record
-- admin action
-- user road report
+- event simulation
+- admin actions
+- user reports
 - parking zones
 - emergency vehicles
 
-Recommended demo order:
+Recommended teacher demo flow:
 
 1. POST /api/demo/reset
 2. POST /api/demo/seed
@@ -48,3 +36,5 @@ Recommended demo order:
 5. GET /api/admin/dashboard
 6. GET /api/trips
 7. GET /api/alerts/driver
+
+"@ | Add-Content docs/backend-api.md
