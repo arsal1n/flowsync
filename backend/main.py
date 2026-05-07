@@ -19,11 +19,13 @@ from database import (
     save_sensor_reading,
     save_trip_and_route,
 )
+
 from demo_engine import (
     get_demo_status,
     reset_demo_data,
     seed_demo_data,
 )
+
 from platform_engine import (
     clear_emergency_corridor,
     create_admin_road_action,
@@ -45,6 +47,7 @@ from platform_engine import (
     simulate_digital_twin,
     update_personalized_profile,
 )
+
 from route_engine import (
     get_recommended_route,
     simulate_adaptive_distribution,
@@ -60,9 +63,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="FlowSync Smart Mobility Backend API",
     version="1.0.1",
-    description="Full backend platform for adaptive routing, smart city mobility, emergency routing, parking, IoT, events, sustainability, and demo tools.",
-    lifespan=lifespan
+    description=(
+        "Full backend platform for adaptive routing, smart city mobility, "
+        "emergency routing, parking, IoT, events, sustainability, demo tools, "
+        "and frontend navigation support."
+    ),
+    lifespan=lifespan,
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -181,7 +189,7 @@ FEATURE_CATALOG = [
     "Smart Construction Zone Management",
     "Urban Stress Index",
     "Smart Ride-Sharing Fusion",
-    "Smart Commute Scheduling"
+    "Smart Commute Scheduling",
 ]
 
 
@@ -191,7 +199,8 @@ def home():
         "message": "FlowSync smart mobility backend is running",
         "version": "1.0.1",
         "database": "SQLite connected",
-        "platform": "Smart-city traffic intelligence system"
+        "platform": "Smart-city traffic intelligence system",
+        "navigation_support": "enabled",
     }
 
 
@@ -200,7 +209,7 @@ def features():
     return {
         "total_features": len(FEATURE_CATALOG),
         "features": FEATURE_CATALOG,
-        "message": "All 30 FlowSync smart mobility features are represented in the backend platform."
+        "message": "All 30 FlowSync smart mobility features are represented in the backend platform.",
     }
 
 
@@ -225,7 +234,7 @@ def recommend_route(trip: TripRequest):
         start_location=trip.start_location,
         destination=trip.destination,
         route_preference=trip.route_preference,
-        user_role=trip.user_role
+        user_role=trip.user_role,
     )
 
     saved_record = save_trip_and_route(
@@ -234,7 +243,7 @@ def recommend_route(trip: TripRequest):
         vehicle_type=trip.vehicle_type,
         recommended_route=result["recommended_route"],
         route_preference=trip.route_preference,
-        user_role=trip.user_role
+        user_role=trip.user_role,
     )
 
     result["vehicle_type"] = trip.vehicle_type
@@ -247,7 +256,7 @@ def recommend_route(trip: TripRequest):
 def route_loads():
     return {
         "route_loads": get_route_loads(),
-        "message": "Live route assignment counts and capacity ratios."
+        "message": "Live route assignment counts and capacity ratios.",
     }
 
 
@@ -255,18 +264,18 @@ def route_loads():
 def route_options(
     start_location: str = "Dubai Mall",
     destination: str = "Dubai Marina",
-    route_preference: str = "balanced"
+    route_preference: str = "balanced",
 ):
     result = get_recommended_route(
         start_location=start_location,
         destination=destination,
         route_preference=route_preference,
-        user_role="driver"
+        user_role="driver",
     )
 
     return {
         "all_routes": result["all_routes"],
-        "recommended_route": result["recommended_route"]
+        "recommended_route": result["recommended_route"],
     }
 
 
@@ -275,7 +284,7 @@ def route_fairness():
     return {
         "route_loads": get_route_loads(),
         "fairness_rule": "FlowSync avoids overloading the same residential or hyperlocal roads repeatedly.",
-        "message": "Route fairness engine active."
+        "message": "Route fairness engine active.",
     }
 
 
@@ -285,7 +294,7 @@ def simulate_routes(request: RouteSimulationRequest):
         total_drivers=request.total_drivers,
         start_location=request.start_location,
         destination=request.destination,
-        route_preference=request.route_preference
+        route_preference=request.route_preference,
     )
 
 
@@ -293,21 +302,21 @@ def simulate_routes(request: RouteSimulationRequest):
 def route_by_mode(
     route_mode: str,
     start_location: str = "Dubai Mall",
-    destination: str = "Dubai Marina"
+    destination: str = "Dubai Marina",
 ):
     allowed_modes = ["fastest", "balanced", "eco", "cheapest", "low_stress"]
 
     if route_mode not in allowed_modes:
         raise HTTPException(
             status_code=400,
-            detail=f"route_mode must be one of: {allowed_modes}"
+            detail=f"route_mode must be one of: {allowed_modes}",
         )
 
     return get_recommended_route(
         start_location=start_location,
         destination=destination,
         route_preference=route_mode,
-        user_role="driver"
+        user_role="driver",
     )
 
 
@@ -319,7 +328,7 @@ def dashboard():
 @app.get("/api/trips", tags=["Dashboard"])
 def trips():
     return {
-        "recent_trips": get_recent_trips()
+        "recent_trips": get_recent_trips(),
     }
 
 
@@ -331,7 +340,7 @@ def mobile_home(user_id: str = "demo-driver"):
 @app.get("/api/alerts/driver", tags=["Mobile App"])
 def driver_alerts():
     return {
-        "driver_alerts": get_driver_alerts()
+        "driver_alerts": get_driver_alerts(),
     }
 
 
@@ -341,12 +350,12 @@ def create_alert(alert: DriverAlertRequest):
         alert_type=alert.alert_type,
         message=alert.message,
         zone_name=alert.zone_name,
-        severity=alert.severity
+        severity=alert.severity,
     )
 
     return {
         **record,
-        "alert": alert
+        "alert": alert,
     }
 
 
@@ -354,12 +363,12 @@ def create_alert(alert: DriverAlertRequest):
 def congestion_prediction(
     start_location: str = "Dubai",
     destination: str = "Sharjah",
-    time_of_day: str = "17:00"
+    time_of_day: str = "17:00",
 ):
     return get_ai_congestion_prediction(
         start_location=start_location,
         destination=destination,
-        time_of_day=time_of_day
+        time_of_day=time_of_day,
     )
 
 
@@ -387,12 +396,12 @@ def add_traffic_sensor_reading(reading: SensorReadingRequest):
         average_speed=reading.average_speed,
         congestion_level=reading.congestion_level,
         parking_occupancy=reading.parking_occupancy,
-        road_capacity_score=reading.road_capacity_score
+        road_capacity_score=reading.road_capacity_score,
     )
 
     return {
         **record,
-        "message": "Traffic sensor reading saved."
+        "message": "Traffic sensor reading saved.",
     }
 
 
@@ -405,19 +414,19 @@ def add_parking_sensor_reading(reading: SensorReadingRequest):
         average_speed=reading.average_speed,
         congestion_level=reading.congestion_level,
         parking_occupancy=reading.parking_occupancy,
-        road_capacity_score=reading.road_capacity_score
+        road_capacity_score=reading.road_capacity_score,
     )
 
     return {
         **record,
-        "message": "Parking sensor reading saved."
+        "message": "Parking sensor reading saved.",
     }
 
 
 @app.get("/api/sensors/latest", tags=["IoT Sensors"])
 def latest_sensors():
     return {
-        "latest_sensor_readings": get_latest_sensor_readings()
+        "latest_sensor_readings": get_latest_sensor_readings(),
     }
 
 
@@ -425,7 +434,7 @@ def latest_sensors():
 def zone_density():
     return {
         "zone_density": get_latest_sensor_readings(),
-        "message": "Zone density is estimated from latest IoT traffic sensor readings."
+        "message": "Zone density is estimated from latest IoT traffic sensor readings.",
     }
 
 
@@ -454,7 +463,7 @@ def admin_road_closure(action: AdminActionRequest):
     return create_admin_road_action(
         action_type="road_closure",
         target_area=action.target_area,
-        description=action.description
+        description=action.description,
     )
 
 
@@ -463,7 +472,7 @@ def admin_reroute_zone(action: AdminActionRequest):
     return create_admin_road_action(
         action_type="reroute_zone",
         target_area=action.target_area,
-        description=action.description
+        description=action.description,
     )
 
 
@@ -472,7 +481,7 @@ def admin_no_entry_zone(action: AdminActionRequest):
     return create_admin_road_action(
         action_type="no_entry_zone",
         target_area=action.target_area,
-        description=action.description
+        description=action.description,
     )
 
 
@@ -486,8 +495,8 @@ def urban_stress():
                 "congestion",
                 "stop_frequency",
                 "commute_delay",
-                "route_overload"
-            ]
+                "route_overload",
+            ],
         }
     }
 
@@ -497,14 +506,14 @@ def emergency_route(request: EmergencyRouteRequest):
     return create_emergency_route(
         start_location=request.start_location,
         destination=request.destination,
-        emergency_type=request.emergency_type
+        emergency_type=request.emergency_type,
     )
 
 
 @app.get("/api/emergency/vehicles", tags=["Emergency Routing"])
 def emergency_vehicles():
     return {
-        "emergency_vehicles": get_emergency_vehicles()
+        "emergency_vehicles": get_emergency_vehicles(),
     }
 
 
@@ -512,7 +521,7 @@ def emergency_vehicles():
 def emergency_corridor(request: EmergencyCorridorRequest):
     return clear_emergency_corridor(
         area=request.area,
-        emergency_type=request.emergency_type
+        emergency_type=request.emergency_type,
     )
 
 
@@ -521,13 +530,13 @@ def emergency_convoy(request: EmergencyRouteRequest):
     result = create_emergency_route(
         start_location=request.start_location,
         destination=request.destination,
-        emergency_type=request.emergency_type
+        emergency_type=request.emergency_type,
     )
 
     result["convoy_mode"] = {
         "status": "active",
         "synchronization": "enabled",
-        "separation_prevention": "enabled"
+        "separation_prevention": "enabled",
     }
 
     return result
@@ -538,7 +547,7 @@ def vip_route(request: EmergencyRouteRequest):
     return create_emergency_route(
         start_location=request.start_location,
         destination=request.destination,
-        emergency_type="vip"
+        emergency_type="vip",
     )
 
 
@@ -548,14 +557,14 @@ def event_simulation(request: EventSimulationRequest):
         event_name=request.event_name,
         location=request.location,
         total_drivers=request.total_drivers,
-        event_time=request.event_time
+        event_time=request.event_time,
     )
 
 
 @app.get("/api/events/list", tags=["Events"])
 def events_list():
     return {
-        "events": get_events()
+        "events": get_events(),
     }
 
 
@@ -577,13 +586,13 @@ def sustainability_metrics():
 @app.get("/api/sustainability/eco-route", tags=["Sustainability"])
 def eco_route(
     start_location: str = "Dubai Mall",
-    destination: str = "Dubai Marina"
+    destination: str = "Dubai Marina",
 ):
     return get_recommended_route(
         start_location=start_location,
         destination=destination,
         route_preference="eco",
-        user_role="driver"
+        user_role="driver",
     )
 
 
@@ -592,14 +601,14 @@ def create_report(report: CrowdReportRequest):
     return create_crowd_report(
         report_type=report.report_type,
         location=report.location,
-        description=report.description
+        description=report.description,
     )
 
 
 @app.get("/api/reports/latest", tags=["Crowd Reports"])
 def latest_reports():
     return {
-        "latest_reports": get_latest_reports()
+        "latest_reports": get_latest_reports(),
     }
 
 
@@ -608,7 +617,7 @@ def digital_twin_simulation(request: DigitalTwinRequest):
     return simulate_digital_twin(
         scenario_type=request.scenario_type,
         area=request.area,
-        total_vehicles=request.total_vehicles
+        total_vehicles=request.total_vehicles,
     )
 
 
@@ -617,7 +626,7 @@ def rideshare_match(request: RideShareRequest):
     return match_rideshare(
         start_location=request.start_location,
         destination=request.destination,
-        passengers=request.passengers
+        passengers=request.passengers,
     )
 
 
@@ -630,5 +639,10 @@ def user_preferences(user_id: str = "demo-driver"):
 def update_user_preferences(request: UserPreferencesRequest):
     return update_personalized_profile(
         user_id=request.user_id,
-        preferences=request.preferences
+        preferences=request.preferences,
     )
+
+
+from navigation_routes import register_navigation_routes
+
+register_navigation_routes(app)
