@@ -23,6 +23,7 @@ class StartNavigationRequest(BaseModel):
     user_role: str = "driver"
     route_name: Optional[str] = None
     user_id: str = "demo-driver"
+    request_id: Optional[int] = None
 
 
 class EndNavigationRequest(BaseModel):
@@ -52,6 +53,7 @@ def register_navigation_routes(app: FastAPI):
             user_role=request.user_role,
             route_name=request.route_name,
             user_id=request.user_id,
+            request_id=request.request_id,
         )
 
     @app.get("/api/trips/active", tags=["Navigation"])
