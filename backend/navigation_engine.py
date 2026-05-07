@@ -1,106 +1,19 @@
-from datetime import datetime
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from typing import Any, Dict, Optional
 
+from navigation_persistence import (
+    end_navigation_session_in_db,
+    get_active_navigation_sessions_from_db,
+    get_navigation_events,
+    get_navigation_session_by_id,
+    save_navigation_session,
+    search_locations_from_db,
+    update_navigation_step,
+)
 from route_engine import get_recommended_route
 
 
-LOCATION_CATALOG = [
-    {
-        "name": "Dubai Mall",
-        "address": "Downtown Dubai",
-        "lat": 25.1972,
-        "lng": 55.2744,
-        "type": "mall",
-    },
-    {
-        "name": "Burj Khalifa",
-        "address": "Downtown Dubai",
-        "lat": 25.1975,
-        "lng": 55.2743,
-        "type": "landmark",
-    },
-    {
-        "name": "Dubai Marina",
-        "address": "Dubai Marina",
-        "lat": 25.0800,
-        "lng": 55.1400,
-        "type": "district",
-    },
-    {
-        "name": "Business Bay",
-        "address": "Business Bay",
-        "lat": 25.1850,
-        "lng": 55.2800,
-        "type": "district",
-    },
-    {
-        "name": "Dubai Arena",
-        "address": "City Walk Dubai",
-        "lat": 25.2075,
-        "lng": 55.2605,
-        "type": "event_venue",
-    },
-    {
-        "name": "Rashid Hospital",
-        "address": "Umm Hurair, Dubai",
-        "lat": 25.2371,
-        "lng": 55.3136,
-        "type": "hospital",
-    },
-    {
-        "name": "Dubai International Airport",
-        "address": "Garhoud, Dubai",
-        "lat": 25.2532,
-        "lng": 55.3657,
-        "type": "airport",
-    },
-    {
-        "name": "Mall of the Emirates",
-        "address": "Al Barsha, Dubai",
-        "lat": 25.1181,
-        "lng": 55.2006,
-        "type": "mall",
-    },
-    {
-        "name": "Jumeirah Beach",
-        "address": "Jumeirah, Dubai",
-        "lat": 25.2048,
-        "lng": 55.2500,
-        "type": "beach",
-    },
-    {
-        "name": "Sharjah City Centre",
-        "address": "Al Wahda Street, Sharjah",
-        "lat": 25.3315,
-        "lng": 55.3955,
-        "type": "mall",
-    },
-]
-
-
-ACTIVE_NAVIGATION_SESSIONS: Dict[str, Dict[str, Any]] = {}
-
-
 def search_locations(query: str) -> Dict[str, Any]:
-    query = (query or "").strip().lower()
-
-    if not query:
-        results = LOCATION_CATALOG[:6]
-    else:
-        results = [
-            location
-            for location in LOCATION_CATALOG
-            if query in location["name"].lower()
-            or query in location["address"].lower()
-            or query in location["type"].lower()
-        ]
-
-    return {
-        "query": query,
-        "results": results,
-        "count": len(results),
-    }
+    return search_locations_from_db(query)
 
 
 def start_navigation_session(
@@ -120,44 +33,30 @@ def start_navigation_session(
     )
 
     selected_route = route_result["recommended_route"]
+    selected_route_source = "recommended_route"
 
     if route_name:
         for route in route_result["all_routes"]:
             if route["route_name"] == route_name:
                 selected_route = route
+                selected_route_source = "frontend_selected_route"
                 break
 
-    session_id = f"NAV-{uuid4().hex[:10].upper()}"
-    started_time = datetime.now().isoformat(timespec="seconds")
-
-    session = {
-        "session_id": session_id,
-        "user_id": user_id,
-        "status": "active",
-        "start_location": start_location,
-        "destination": destination,
-        "vehicle_type": vehicle_type,
-        "route_preference": route_preference,
-        "user_role": user_role,
-        "selected_route": selected_route,
-        "started_time": started_time,
-        "ended_time": None,
-        "live_navigation": {
-            "current_step_index": 0,
-            "next_instruction": selected_route["turn_steps"][0]["instruction"],
-            "remaining_steps": selected_route["turn_steps"],
-            "route_coordinates": selected_route["coordinates"],
-            "polyline": selected_route["polyline"],
-            "alerts": selected_route["alerts"],
-            "incidents": selected_route["incidents"],
-        },
-    }
-
-    ACTIVE_NAVIGATION_SESSIONS[session_id] = session
+    saved_session = save_navigation_session(
+        user_id=user_id,
+        start_location=start_location,
+        destination=destination,
+        vehicle_type=vehicle_type,
+        route_preference=route_preference,
+        user_role=user_role,
+        selected_route=selected_route,
+    )
 
     return {
         "message": "Navigation session started.",
-        "session": session,
+        "persistence": "sqlite",
+        "selected_route_source": selected_route_source,
+        "session": saved_session["session"],
     }
 
 
@@ -165,37 +64,29 @@ def end_navigation_session(
     session_id: str,
     status: str = "completed",
 ) -> Dict[str, Any]:
-    session = ACTIVE_NAVIGATION_SESSIONS.get(session_id)
-
-    if not session:
-        return {
-            "found": False,
-            "message": "Navigation session not found.",
-            "session_id": session_id,
-        }
-
-    session["status"] = status
-    session["ended_time"] = datetime.now().isoformat(timespec="seconds")
-
-    ACTIVE_NAVIGATION_SESSIONS[session_id] = session
-
-    return {
-        "found": True,
-        "message": "Navigation session ended.",
-        "session": session,
-    }
+    return end_navigation_session_in_db(
+        session_id=session_id,
+        status=status,
+    )
 
 
 def get_active_navigation_sessions() -> Dict[str, Any]:
-    sessions = list(ACTIVE_NAVIGATION_SESSIONS.values())
+    return get_active_navigation_sessions_from_db()
 
-    active_sessions = [
-        session for session in sessions
-        if session["status"] == "active"
-    ]
 
-    return {
-        "active_navigation_sessions": active_sessions,
-        "active_count": len(active_sessions),
-        "total_sessions": len(sessions),
-    }
+def get_navigation_session(session_id: str) -> Dict[str, Any]:
+    return get_navigation_session_by_id(session_id)
+
+
+def update_navigation_progress(
+    session_id: str,
+    current_step_index: int,
+) -> Dict[str, Any]:
+    return update_navigation_step(
+        session_id=session_id,
+        current_step_index=current_step_index,
+    )
+
+
+def get_session_events(session_id: str) -> Dict[str, Any]:
+    return get_navigation_events(session_id)

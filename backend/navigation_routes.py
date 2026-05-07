@@ -6,9 +6,13 @@ from pydantic import BaseModel
 from navigation_engine import (
     end_navigation_session,
     get_active_navigation_sessions,
+    get_navigation_session,
+    get_session_events,
     search_locations,
     start_navigation_session,
+    update_navigation_progress,
 )
+from navigation_persistence import init_navigation_persistence
 
 
 class StartNavigationRequest(BaseModel):
@@ -26,7 +30,14 @@ class EndNavigationRequest(BaseModel):
     status: str = "completed"
 
 
+class NavigationProgressRequest(BaseModel):
+    session_id: str
+    current_step_index: int
+
+
 def register_navigation_routes(app: FastAPI):
+    init_navigation_persistence()
+
     @app.get("/api/locations/search", tags=["Navigation"])
     def location_search(q: str = ""):
         return search_locations(q)
@@ -43,6 +54,40 @@ def register_navigation_routes(app: FastAPI):
             user_id=request.user_id,
         )
 
+    @app.get("/api/trips/active", tags=["Navigation"])
+    def active_navigation_sessions():
+        return get_active_navigation_sessions()
+
+    @app.get("/api/trips/session/{session_id}", tags=["Navigation"])
+    def navigation_session_detail(session_id: str):
+        result = get_navigation_session(session_id)
+
+        if not result["found"]:
+            raise HTTPException(status_code=404, detail=result["message"])
+
+        return result
+
+    @app.post("/api/trips/progress", tags=["Navigation"])
+    def navigation_progress(request: NavigationProgressRequest):
+        result = update_navigation_progress(
+            session_id=request.session_id,
+            current_step_index=request.current_step_index,
+        )
+
+        if not result["found"]:
+            raise HTTPException(status_code=404, detail=result["message"])
+
+        return result
+
+    @app.get("/api/trips/session/{session_id}/events", tags=["Navigation"])
+    def navigation_session_events(session_id: str):
+        session_result = get_navigation_session(session_id)
+
+        if not session_result["found"]:
+            raise HTTPException(status_code=404, detail=session_result["message"])
+
+        return get_session_events(session_id)
+
     @app.post("/api/trips/end", tags=["Navigation"])
     def end_trip_navigation(request: EndNavigationRequest):
         result = end_navigation_session(
@@ -54,7 +99,3 @@ def register_navigation_routes(app: FastAPI):
             raise HTTPException(status_code=404, detail=result["message"])
 
         return result
-
-    @app.get("/api/trips/active", tags=["Navigation"])
-    def active_navigation_sessions():
-        return get_active_navigation_sessions()
