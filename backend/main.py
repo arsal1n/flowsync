@@ -19,6 +19,11 @@ from database import (
     save_sensor_reading,
     save_trip_and_route,
 )
+from demo_engine import (
+    get_demo_status,
+    reset_demo_data,
+    seed_demo_data,
+)
 from platform_engine import (
     clear_emergency_corridor,
     create_admin_road_action,
@@ -54,8 +59,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="FlowSync Smart Mobility Backend API",
-    version="1.0.0",
-    description="Full backend platform for adaptive routing, smart city mobility, emergency routing, parking, IoT, events, and sustainability.",
+    version="1.0.1",
+    description="Full backend platform for adaptive routing, smart city mobility, emergency routing, parking, IoT, events, sustainability, and demo tools.",
     lifespan=lifespan
 )
 
@@ -184,7 +189,7 @@ FEATURE_CATALOG = [
 def home():
     return {
         "message": "FlowSync smart mobility backend is running",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "database": "SQLite connected",
         "platform": "Smart-city traffic intelligence system"
     }
@@ -197,6 +202,21 @@ def features():
         "features": FEATURE_CATALOG,
         "message": "All 30 FlowSync smart mobility features are represented in the backend platform."
     }
+
+
+@app.get("/api/demo/status", tags=["Demo Tools"])
+def demo_status():
+    return get_demo_status()
+
+
+@app.post("/api/demo/reset", tags=["Demo Tools"])
+def demo_reset():
+    return reset_demo_data()
+
+
+@app.post("/api/demo/seed", tags=["Demo Tools"])
+def demo_seed():
+    return seed_demo_data()
 
 
 @app.post("/api/routes/recommend", tags=["Adaptive Routing"])
