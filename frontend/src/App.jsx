@@ -20,23 +20,7 @@ import {
   getMobileHome,
 } from "./api";
 
-const routeA = [
-  [25.0800, 55.1400],
-  [25.1200, 55.1900],
-  [25.1972, 55.2744],
-];
-
-const routeB = [
-  [25.0800, 55.1400],
-  [25.1500, 55.2200],
-  [25.1972, 55.2744],
-];
-
-const routeC = [
-  [25.0800, 55.1400],
-  [25.1700, 55.2500],
-  [25.1972, 55.2744],
-];
+import { geocode, getRoute } from "./services/routeService";
 
 const routes = [
   {
@@ -175,45 +159,57 @@ function MobileDashboard({ onLogout }) {
   const [dashboardData, setDashboardData] = useState(null);
   const [trips, setTrips] = useState([]);
   const [backendStatus, setBackendStatus] = useState(null);
-const [features, setFeatures] = useState([]);
-const [parkingPrediction, setParkingPrediction] = useState(null);
-const [alerts, setAlerts] = useState([]);
-const [mobileHome, setMobileHome] = useState(null);
+  const [features, setFeatures] = useState([]);
+  const [parkingPrediction, setParkingPrediction] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [mobileHome, setMobileHome] = useState(null);
+
+  // Arsalan's routing state
+  const [activeRoute, setActiveRoute] = useState([
+    [25.0800, 55.1400],
+    [25.1500, 55.2200],
+    [25.1972, 55.2744],
+  ]);
+  const [startMarker, setStartMarker] = useState([25.0800, 55.1400]);
+  const [destMarker, setDestMarker] = useState([25.1972, 55.2744]);
+  const [mapRouteInfo, setMapRouteInfo] = useState({
+    from: "Dubai Marina",
+    to: "Downtown Dubai",
+    time: "26 min"
+  });
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadBackendData() {
-  const status = await getBackendStatus();
+      const status = await getBackendStatus();
+      const featureResult = await getFeatures();
+      const routeData = await getRecommendedRoute({
+        start_location: "Dubai Mall",
+        destination: "Dubai Marina",
+        vehicle_type: "car",
+        route_preference: "balanced",
+        user_role: "driver",
+      });
+      const dashboard = await getDashboardData();
+      const recentTrips = await getTrips();
+      const parking = await getParkingPrediction("Dubai Mall");
+      const driverAlerts = await getDriverAlerts();
+      const mobileHomeData = await getMobileHome("demo-driver");
 
-  const featureResult = await getFeatures();
+      if (!isMounted) return;
 
-  const routeData = await getRecommendedRoute({
-    start_location: "Dubai Mall",
-    destination: "Dubai Marina",
-    vehicle_type: "car",
-    route_preference: "balanced",
-    user_role: "driver",
-  });
-
-  const dashboard = await getDashboardData();
-  const recentTrips = await getTrips();
-  const parking = await getParkingPrediction("Dubai Mall");
-  const driverAlerts = await getDriverAlerts();
-  const mobileHomeData = await getMobileHome("demo-driver");
-
-  if (!isMounted) return;
-
-  setBackendStatus(status.data);
-  setFeatures(featureResult.data?.features || []);
-  setRouteResult(routeData);
-  setApiSource(routeData.source);
-  setDashboardData(dashboard.data);
-  setTrips(recentTrips.data || []);
-  setParkingPrediction(parking.data);
-  setAlerts(driverAlerts.data || []);
-  setMobileHome(mobileHomeData.data);
-}
+      setBackendStatus(status.data);
+      setFeatures(featureResult.data?.features || []);
+      setRouteResult(routeData);
+      setApiSource(routeData.source);
+      setDashboardData(dashboard.data);
+      setTrips(recentTrips.data || []);
+      setParkingPrediction(parking.data);
+      setAlerts(driverAlerts.data || []);
+      setMobileHome(mobileHomeData.data);
+    }
 
     loadBackendData();
 
@@ -221,6 +217,26 @@ const [mobileHome, setMobileHome] = useState(null);
       isMounted = false;
     };
   }, []);
+
+  // Arsalan's search handler
+  async function handleSearch() {
+    if (!searchText.trim()) return;
+    setIsLoadingRoute(true);
+    try {
+      const destCoords = await geocode(searchText);
+      const routeData = await getRoute(startMarker, destCoords);
+      setActiveRoute(routeData.coordinates);
+      setDestMarker(destCoords);
+      setMapRouteInfo({
+        from: "Dubai Marina",
+        to: searchText,
+        time: `${routeData.estimated_time} min`
+      });
+    } catch (err) {
+      console.error("Route error:", err);
+    }
+    setIsLoadingRoute(false);
+  }
 
   return (
     <main className="mobile-stage">
@@ -251,24 +267,25 @@ const [mobileHome, setMobileHome] = useState(null);
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
-            <Polyline positions={routeA} pathOptions={{ color: "#ff3b30", weight: 4 }} />
-            <Polyline positions={routeB} pathOptions={{ color: "#00ff88", weight: 7 }} />
-            <Polyline positions={routeC} pathOptions={{ color: "#00e5ff", weight: 4 }} />
+            <Polyline
+              positions={activeRoute}
+              pathOptions={{ color: "#00ff88", weight: 7 }}
+            />
 
             <CircleMarker
-              center={[25.0800, 55.1400]}
+              center={startMarker}
               radius={8}
               pathOptions={{ color: "white", fillColor: "white", fillOpacity: 1 }}
             >
-              <Popup>Start: Dubai Marina</Popup>
+              <Popup>Start: {mapRouteInfo.from}</Popup>
             </CircleMarker>
 
             <CircleMarker
-              center={[25.1972, 55.2744]}
+              center={destMarker}
               radius={9}
               pathOptions={{ color: "#ffe600", fillColor: "#ffe600", fillOpacity: 1 }}
             >
-              <Popup>Destination: Downtown Dubai</Popup>
+              <Popup>Destination: {mapRouteInfo.to}</Popup>
             </CircleMarker>
           </MapContainer>
 
@@ -284,14 +301,6 @@ const [mobileHome, setMobileHome] = useState(null);
             <strong>0</strong>
             <span>km/h</span>
           </div>
-
-          <div className="destination-chip">
-            <span>⌖</span>
-            <div>
-              <strong>Downtown Dubai</strong>
-              <p>26 min • 20.1 km</p>
-            </div>
-          </div>
         </section>
 
         <section className="search-card">
@@ -299,9 +308,12 @@ const [mobileHome, setMobileHome] = useState(null);
           <input
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Where to?"
           />
-          <button>🎙️</button>
+          <button onClick={handleSearch}>
+            {isLoadingRoute ? "⏳" : "🎙️"}
+          </button>
         </section>
 
         <section className="feature-strip">
@@ -321,20 +333,20 @@ const [mobileHome, setMobileHome] = useState(null);
 
         <section className="content-sheet">
           {activeTab === "home" && (
-  <HomeScreen routeResult={routeResult} apiSource={apiSource} />
-)}
-
-{activeTab === "routes" && (
-  <RoutesScreen routeResult={routeResult} apiSource={apiSource} />
-)}
-
-{activeTab === "parking" && <ParkingScreen />}
-
-{activeTab === "insights" && (
-  <InsightsScreen dashboardData={dashboardData} trips={trips} />
-)}
-
-{activeTab === "saved" && <SavedScreen />}
+            <HomeScreen
+              routeResult={routeResult}
+              apiSource={apiSource}
+              mapRouteInfo={mapRouteInfo}
+            />
+          )}
+          {activeTab === "routes" && (
+            <RoutesScreen routeResult={routeResult} apiSource={apiSource} />
+          )}
+          {activeTab === "parking" && <ParkingScreen />}
+          {activeTab === "insights" && (
+            <InsightsScreen dashboardData={dashboardData} trips={trips} />
+          )}
+          {activeTab === "saved" && <SavedScreen />}
         </section>
 
         <nav className="bottom-nav">
@@ -383,7 +395,7 @@ const [mobileHome, setMobileHome] = useState(null);
   );
 }
 
-function HomeScreen({ routeResult, apiSource }) {
+function HomeScreen({ routeResult, apiSource, mapRouteInfo }) {
   const selectedRoute =
     routeResult?.routes?.find(
       (route) => route.name === routeResult.recommended_route
@@ -411,13 +423,13 @@ function HomeScreen({ routeResult, apiSource }) {
 
       <div className="primary-route-card">
         <div>
-          <h4>Dubai Mall → Dubai Marina</h4>
+          <h4>{mapRouteInfo.from} → {mapRouteInfo.to}</h4>
           <p>
             {routeResult?.reason ||
               "Recommended route balances traffic instead of sending everyone to the fastest road."}
           </p>
         </div>
-        <strong>{selectedRoute.time}</strong>
+        <strong>{mapRouteInfo.time}</strong>
       </div>
 
       <div className="quick-grid">
@@ -430,19 +442,16 @@ function HomeScreen({ routeResult, apiSource }) {
               : "Using fallback route data"
           }
         />
-
         <SmartCard
           title="Selected route"
           value={selectedRoute.name}
           detail={`Congestion: ${selectedRoute.congestion}`}
         />
-
         <SmartCard
           title="FlowSync score"
           value={selectedRoute.score}
           detail="Lower score means better traffic balance"
         />
-
         <SmartCard
           title="Eco estimate"
           value="1.8 kg"
