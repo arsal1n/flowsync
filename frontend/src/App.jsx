@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -8,6 +8,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./index.css";
+import { getRecommendedRoute, getDashboardData, getTrips } from "./api";
 
 const routeA = [
   [25.0800, 55.1400],
@@ -159,6 +160,39 @@ function LoginPage({ onLogin }) {
 function MobileDashboard({ onLogout }) {
   const [activeTab, setActiveTab] = useState("home");
   const [searchText, setSearchText] = useState("");
+  const [routeResult, setRouteResult] = useState(null);
+  const [apiSource, setApiSource] = useState("checking");
+  const [dashboardData, setDashboardData] = useState(null);
+  const [trips, setTrips] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadBackendData() {
+      const tripRequest = {
+        start_location: "Dubai Mall",
+        destination: "Dubai Marina",
+        vehicle_type: "car",
+      };
+
+      const routeData = await getRecommendedRoute(tripRequest);
+      const dashboard = await getDashboardData();
+      const recentTrips = await getTrips();
+
+      if (!isMounted) return;
+
+      setRouteResult(routeData);
+      setApiSource(routeData.source);
+      setDashboardData(dashboard.data);
+      setTrips(recentTrips.data || []);
+    }
+
+    loadBackendData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <main className="mobile-stage">
@@ -258,11 +292,21 @@ function MobileDashboard({ onLogout }) {
         </section>
 
         <section className="content-sheet">
-          {activeTab === "home" && <HomeScreen />}
-          {activeTab === "routes" && <RoutesScreen />}
-          {activeTab === "parking" && <ParkingScreen />}
-          {activeTab === "insights" && <InsightsScreen />}
-          {activeTab === "saved" && <SavedScreen />}
+          {activeTab === "home" && (
+  <HomeScreen routeResult={routeResult} apiSource={apiSource} />
+)}
+
+{activeTab === "routes" && (
+  <RoutesScreen routeResult={routeResult} apiSource={apiSource} />
+)}
+
+{activeTab === "parking" && <ParkingScreen />}
+
+{activeTab === "insights" && (
+  <InsightsScreen dashboardData={dashboardData} trips={trips} />
+)}
+
+{activeTab === "saved" && <SavedScreen />}
         </section>
 
         <nav className="bottom-nav">
@@ -311,30 +355,71 @@ function MobileDashboard({ onLogout }) {
   );
 }
 
-function HomeScreen() {
+function HomeScreen({ routeResult, apiSource }) {
+  const selectedRoute =
+    routeResult?.routes?.find(
+      (route) => route.name === routeResult.recommended_route
+    ) || routes[1];
+
+  const sourceLabel =
+    apiSource === "backend"
+      ? "Backend Connected"
+      : apiSource === "checking"
+      ? "Checking API"
+      : "Mock Data";
+
   return (
     <>
       <div className="sheet-header">
         <div>
           <p className="eyebrow">Adaptive Route Distribution</p>
-          <h3>Route B selected for balanced city flow</h3>
+          <h3>{selectedRoute.name} selected for balanced city flow</h3>
         </div>
-        <span className="status-pill">Live</span>
+
+        <span className={apiSource === "backend" ? "status-pill" : "future-pill"}>
+          {sourceLabel}
+        </span>
       </div>
 
       <div className="primary-route-card">
         <div>
-          <h4>Dubai Marina → Downtown Dubai</h4>
-          <p>Recommended route balances traffic instead of sending everyone to the fastest road.</p>
+          <h4>Dubai Mall → Dubai Marina</h4>
+          <p>
+            {routeResult?.reason ||
+              "Recommended route balances traffic instead of sending everyone to the fastest road."}
+          </p>
         </div>
-        <strong>26 min</strong>
+        <strong>{selectedRoute.time}</strong>
       </div>
 
       <div className="quick-grid">
-        <SmartCard title="Smart departure" value="Leave now" detail="Peak load rising in 12 min" />
-        <SmartCard title="Incident alert" value="E44 delay" detail="8 min slowdown detected" />
-        <SmartCard title="Carpool match" value="3 nearby" detail="Similar destination route" />
-        <SmartCard title="Eco estimate" value="1.8 kg" detail="CO₂ avoided today" />
+        <SmartCard
+          title="API Status"
+          value={sourceLabel}
+          detail={
+            apiSource === "backend"
+              ? "Live FastAPI response received"
+              : "Using fallback route data"
+          }
+        />
+
+        <SmartCard
+          title="Selected route"
+          value={selectedRoute.name}
+          detail={`Congestion: ${selectedRoute.congestion}`}
+        />
+
+        <SmartCard
+          title="FlowSync score"
+          value={selectedRoute.score}
+          detail="Lower score means better traffic balance"
+        />
+
+        <SmartCard
+          title="Eco estimate"
+          value="1.8 kg"
+          detail="CO₂ avoided today"
+        />
       </div>
     </>
   );
