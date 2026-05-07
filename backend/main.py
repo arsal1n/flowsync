@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from security import role_access_middleware
 from pydantic import BaseModel
 
 from database import (
@@ -80,6 +81,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.middleware("http")(role_access_middleware)
 
 class TripRequest(BaseModel):
     start_location: str

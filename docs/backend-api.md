@@ -1243,6 +1243,22 @@ Production upgrades needed:
 
 ---
 
+# Role-Based Access Control
+
+The backend now protects sensitive endpoints using Bearer token authentication.
+
+## Protected Endpoint Groups
+
+### Admin / RTA only
+
+Required roles:
+
+```text
+admin
+rta_operator
+
+---
+
 # Next Backend Development Target
 
 The next backend goal is to move from demo-ready backend to fully functional backend.
