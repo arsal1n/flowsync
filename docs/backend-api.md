@@ -1,22 +1,50 @@
-# FlowSync Backend API Documentation
+## Demo Tools
 
-## Backend Version
+These endpoints help prepare a clean teacher demo.
 
-FlowSync Smart Mobility Backend API  
-Version: 1.0.0
+### GET /api/demo/status
 
-## Base URL
+Shows current demo database status, including:
 
-http://127.0.0.1:8000
+- dashboard data
+- route loads
+- recent trips
+- sensor readings
+- alerts
+- events
+- incidents
+- reports
+- parking zones
+- emergency vehicles
+- table counts
 
-Swagger documentation:
+### POST /api/demo/reset
 
-http://127.0.0.1:8000/docs
+Clears demo database data and resets demo tables.
 
-## Run Backend
+Use this before starting a clean demo.
 
-From project root:
+### POST /api/demo/seed
 
-```powershell
-cd backend
-.\venv\Scripts\python.exe -m uvicorn main:app --reload
+Adds clean sample demo data including:
+
+- sample trips
+- route assignments
+- traffic sensor readings
+- parking sensor readings
+- driver alerts
+- event simulation record
+- admin action
+- user road report
+- parking zones
+- emergency vehicles
+
+Recommended demo order:
+
+1. POST /api/demo/reset
+2. POST /api/demo/seed
+3. GET /api/demo/status
+4. GET /api/dashboard
+5. GET /api/admin/dashboard
+6. GET /api/trips
+7. GET /api/alerts/driver
