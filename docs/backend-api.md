@@ -1275,3 +1275,27 @@ Priority order:
 8. Integrate real routing/geocoding API.
 9. Add WebSocket or polling support for live navigation.
 10. Prepare deployment setup.
+
+---
+
+# Real Routing Provider Foundation
+
+The backend now has a provider-ready routing and geocoding foundation.
+
+Current mode:
+
+- Routing provider: mock fallback
+- Geocoding provider: SQLite locations table
+- Real provider integration: prepared but not enabled yet
+
+## Environment Variables
+
+```text
+FLOWSYNC_ENV=local
+FLOWSYNC_ROUTING_PROVIDER=mock
+FLOWSYNC_GEOCODING_PROVIDER=sqlite
+FLOWSYNC_ROUTING_API_KEY=
+FLOWSYNC_GEOCODING_API_KEY=
+FLOWSYNC_ROUTING_BASE_URL=
+FLOWSYNC_GEOCODING_BASE_URL=
+FLOWSYNC_MOCK_FALLBACK=true
