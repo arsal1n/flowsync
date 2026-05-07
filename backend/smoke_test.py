@@ -250,7 +250,7 @@ def test_platform_features(admin_token: str):
     assert_key(dashboard, "total_trip_requests", "dashboard")
     print_ok("Main dashboard works")
 
-    parking = request_json("GET", "/api/parking/predict?destination=Dubai Mall")
+    parking = request_json("GET", "/api/parking/predict?destination=Dubai%20Mall")
     assert_key(parking, "parking_predictions", "parking")
     print_ok("Parking prediction works")
 
