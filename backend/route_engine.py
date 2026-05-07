@@ -1,181 +1,7 @@
 from typing import Dict, List, Optional
 
 from database import get_route_assignment_counts
-
-
-def step(instruction, distance_m, duration_min, maneuver, road_name, lat, lng):
-    return {
-        "instruction": instruction,
-        "distance_m": distance_m,
-        "duration_min": duration_min,
-        "maneuver": maneuver,
-        "road_name": road_name,
-        "lat": lat,
-        "lng": lng,
-    }
-
-
-ROUTE_CATALOG = [
-    {
-        "route_name": "Route A - Sheikh Zayed Road",
-        "estimated_time": 22,
-        "distance_km": 14.5,
-        "congestion_score": 8,
-        "road_capacity": 18,
-        "route_type": "main_road",
-        "residential_impact": 1,
-        "accident_risk": 4,
-        "weather_risk": 2,
-        "stop_frequency": 7,
-        "fuel_estimate_liters": 1.8,
-        "toll_cost": 4,
-        "eco_score": 5,
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.1915, "lng": 55.2620},
-            {"lat": 25.1667, "lng": 55.2405},
-            {"lat": 25.1212, "lng": 55.2017},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and head toward Financial Centre Road.", 900, 3, "depart", "Financial Centre Road", 25.1972, 55.2744),
-            step("Merge onto Sheikh Zayed Road southbound.", 5200, 7, "merge", "Sheikh Zayed Road", 25.1915, 55.2620),
-            step("Continue straight past Business Bay and Al Safa.", 5200, 7, "straight", "Sheikh Zayed Road", 25.1667, 55.2405),
-            step("Take the Dubai Marina exit.", 2300, 4, "exit", "Dubai Marina Exit", 25.1212, 55.2017),
-            step("Arrive near Dubai Marina.", 900, 1, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {
-                "type": "congestion",
-                "message": "Heavy traffic expected on Sheikh Zayed Road.",
-                "severity": "high",
-            },
-            {
-                "type": "camera",
-                "message": "Speed camera zone ahead.",
-                "severity": "medium",
-            },
-        ],
-        "incidents": [
-            {
-                "type": "slowdown",
-                "message": "Slow movement near Business Bay exit.",
-                "impact": "medium",
-            }
-        ],
-    },
-    {
-        "route_name": "Route B - Al Khail Road",
-        "estimated_time": 26,
-        "distance_km": 16.2,
-        "congestion_score": 4,
-        "road_capacity": 15,
-        "route_type": "arterial_road",
-        "residential_impact": 2,
-        "accident_risk": 3,
-        "weather_risk": 2,
-        "stop_frequency": 5,
-        "fuel_estimate_liters": 1.6,
-        "toll_cost": 0,
-        "eco_score": 7,
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.1850, "lng": 55.2910},
-            {"lat": 25.1560, "lng": 55.2850},
-            {"lat": 25.1155, "lng": 55.2350},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and head toward Business Bay crossing.", 1200, 4, "depart", "Downtown Boulevard", 25.1972, 55.2744),
-            step("Turn toward Al Khail Road access.", 2500, 5, "turn_right", "Business Bay Crossing", 25.1850, 55.2910),
-            step("Continue on Al Khail Road.", 6500, 9, "straight", "Al Khail Road", 25.1560, 55.2850),
-            step("Take the exit toward Dubai Marina/JLT.", 4300, 6, "exit", "JLT Exit", 25.1155, 55.2350),
-            step("Arrive near Dubai Marina.", 1700, 2, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {
-                "type": "balanced_route",
-                "message": "Balanced route with lower congestion than Sheikh Zayed Road.",
-                "severity": "low",
-            }
-        ],
-        "incidents": [],
-    },
-    {
-        "route_name": "Route C - Business Bay Side Streets",
-        "estimated_time": 30,
-        "distance_km": 18.1,
-        "congestion_score": 2,
-        "road_capacity": 10,
-        "route_type": "hyperlocal_route",
-        "residential_impact": 5,
-        "accident_risk": 2,
-        "weather_risk": 3,
-        "stop_frequency": 9,
-        "fuel_estimate_liters": 1.7,
-        "toll_cost": 0,
-        "eco_score": 6,
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.1900, "lng": 55.2808},
-            {"lat": 25.1788, "lng": 55.2690},
-            {"lat": 25.1400, "lng": 55.2222},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and enter Downtown side road.", 800, 3, "depart", "Downtown Side Road", 25.1972, 55.2744),
-            step("Turn through Business Bay local connector.", 3400, 8, "turn_left", "Business Bay Connector", 25.1900, 55.2808),
-            step("Continue through lower-density side streets.", 5200, 9, "straight", "Local Side Streets", 25.1788, 55.2690),
-            step("Join the Marina approach road.", 6900, 8, "merge", "Marina Approach Road", 25.1400, 55.2222),
-            step("Arrive near Dubai Marina.", 1800, 2, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {
-                "type": "fairness_notice",
-                "message": "Hyperlocal route used carefully to avoid overloading residential streets.",
-                "severity": "medium",
-            }
-        ],
-        "incidents": [],
-    },
-    {
-        "route_name": "Route D - Jumeirah Coastal Alternative",
-        "estimated_time": 28,
-        "distance_km": 17.4,
-        "congestion_score": 3,
-        "road_capacity": 12,
-        "route_type": "alternative_road",
-        "residential_impact": 3,
-        "accident_risk": 2,
-        "weather_risk": 4,
-        "stop_frequency": 6,
-        "fuel_estimate_liters": 1.5,
-        "toll_cost": 0,
-        "eco_score": 8,
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.2048, "lng": 55.2500},
-            {"lat": 25.1900, "lng": 55.2250},
-            {"lat": 25.1350, "lng": 55.1850},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and move toward Jumeirah corridor.", 1600, 5, "depart", "Downtown Exit Road", 25.1972, 55.2744),
-            step("Continue toward Jumeirah coastal alternative.", 4200, 7, "straight", "Jumeirah Road", 25.2048, 55.2500),
-            step("Follow coastal connector with smoother traffic.", 5400, 8, "straight", "Coastal Connector", 25.1900, 55.2250),
-            step("Merge toward Dubai Marina approach.", 4800, 6, "merge", "Marina Approach", 25.1350, 55.1850),
-            step("Arrive near Dubai Marina.", 1400, 2, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {
-                "type": "eco_route",
-                "message": "Smoother route with lower stop-and-go driving.",
-                "severity": "low",
-            }
-        ],
-        "incidents": [],
-    },
-]
+from routing_provider import get_provider_route_options
 
 
 EMERGENCY_ROLES = {"ambulance", "police", "fire_truck", "rta_operator", "vip"}
@@ -233,12 +59,19 @@ def calculate_route_score(
 
 def build_scored_routes(
     route_counts: Dict[str, int],
+    start_location: str,
+    destination: str,
     route_preference: str = "balanced",
     user_role: str = "driver",
 ) -> List[Dict]:
+    provider_result = get_provider_route_options(
+        start_location=start_location,
+        destination=destination,
+    )
+
     scored_routes = []
 
-    for route in ROUTE_CATALOG:
+    for route in provider_result["routes"]:
         assigned_users = route_counts.get(route["route_name"], 0)
         route_score = calculate_route_score(
             route=route,
@@ -252,8 +85,8 @@ def build_scored_routes(
 
         enriched_route = {
             **route,
-            "polyline": route["coordinates"],
-            "turn_by_turn_steps": route["turn_steps"],
+            "polyline": route.get("polyline", route.get("coordinates", [])),
+            "turn_by_turn_steps": route.get("turn_by_turn_steps", route.get("turn_steps", [])),
             "assigned_users": assigned_users,
             "route_score": route_score,
             "capacity_ratio": round(capacity_ratio, 2),
@@ -275,11 +108,32 @@ def get_recommended_route(
     if route_counts is None:
         route_counts = get_route_assignment_counts()
 
+    provider_result = get_provider_route_options(
+        start_location=start_location,
+        destination=destination,
+    )
+
     all_routes = build_scored_routes(
         route_counts=route_counts,
+        start_location=start_location,
+        destination=destination,
         route_preference=route_preference,
         user_role=user_role,
     )
+
+    if not all_routes:
+        return {
+            "start_location": start_location,
+            "destination": destination,
+            "route_preference": route_preference,
+            "user_role": user_role,
+            "routing_mode": "provider_unavailable",
+            "routing_provider": provider_result["provider"],
+            "provider_status": provider_result["provider_status"],
+            "recommended_route": None,
+            "all_routes": [],
+            "message": "No route options are available from the configured routing provider.",
+        }
 
     recommended_route = min(all_routes, key=lambda route: route["route_score"])
 
@@ -291,11 +145,13 @@ def get_recommended_route(
         "route_preference": route_preference,
         "user_role": user_role,
         "routing_mode": mode,
+        "routing_provider": provider_result["provider"],
+        "provider_status": provider_result["provider_status"],
         "recommended_route": recommended_route,
         "all_routes": all_routes,
         "message": (
-            "FlowSync selected the best route using adaptive distribution, "
-            "route load, road capacity, fairness, congestion, and user priority."
+            "FlowSync selected the best route using provider-ready routing, "
+            "adaptive distribution, route load, road capacity, fairness, congestion, and user priority."
         ),
     }
 
@@ -307,7 +163,17 @@ def simulate_adaptive_distribution(
     route_preference: str = "balanced",
 ) -> Dict:
     current_counts = get_route_assignment_counts()
-    simulation_counts = {route["route_name"]: 0 for route in ROUTE_CATALOG}
+
+    provider_result = get_provider_route_options(
+        start_location=start_location,
+        destination=destination,
+    )
+
+    simulation_counts = {
+        route["route_name"]: 0
+        for route in provider_result["routes"]
+    }
+
     simulated_assignments = []
 
     for driver_number in range(1, total_drivers + 1):
@@ -318,6 +184,9 @@ def simulate_adaptive_distribution(
             user_role="driver",
             route_counts=current_counts,
         )
+
+        if not result["recommended_route"]:
+            break
 
         selected_route = result["recommended_route"]["route_name"]
         simulation_counts[selected_route] = simulation_counts.get(selected_route, 0) + 1
@@ -335,6 +204,8 @@ def simulate_adaptive_distribution(
         "total_drivers_simulated": total_drivers,
         "start_location": start_location,
         "destination": destination,
+        "routing_provider": provider_result["provider"],
+        "provider_status": provider_result["provider_status"],
         "distribution": simulation_counts,
         "sample_assignments": simulated_assignments[:10],
         "estimated_congestion_reduction": "24%",

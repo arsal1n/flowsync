@@ -1,12 +1,12 @@
 from typing import Any, Dict, Optional
 
+from geocoding_provider import search_locations_provider
 from navigation_persistence import (
     end_navigation_session_in_db,
     get_active_navigation_sessions_from_db,
     get_navigation_events,
     get_navigation_session_by_id,
     save_navigation_session,
-    search_locations_from_db,
     update_navigation_step,
 )
 from route_engine import get_recommended_route
@@ -18,7 +18,7 @@ from trip_lifecycle import (
 
 
 def search_locations(query: str) -> Dict[str, Any]:
-    return search_locations_from_db(query)
+    return search_locations_provider(query)
 
 
 def start_navigation_session(
@@ -37,6 +37,15 @@ def start_navigation_session(
         route_preference=route_preference,
         user_role=user_role,
     )
+
+    if not route_result.get("recommended_route"):
+        return {
+            "message": "Navigation session could not be started because no route was available.",
+            "persistence": "sqlite",
+            "request_id": request_id,
+            "routing_result": route_result,
+            "session": None,
+        }
 
     selected_route = route_result["recommended_route"]
     selected_route_source = "recommended_route"
@@ -71,6 +80,8 @@ def start_navigation_session(
     return {
         "message": "Navigation session started.",
         "persistence": "sqlite",
+        "routing_provider": route_result.get("routing_provider"),
+        "provider_status": route_result.get("provider_status"),
         "selected_route_source": selected_route_source,
         "request_id": request_id,
         "trip_lifecycle": lifecycle_update,
