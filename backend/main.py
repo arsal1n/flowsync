@@ -650,3 +650,7 @@ register_navigation_routes(app)
 from trip_lifecycle_routes import register_trip_lifecycle_routes
 
 register_trip_lifecycle_routes(app)
+
+from auth_routes import register_auth_routes
+
+register_auth_routes(app)
