@@ -24,6 +24,7 @@ PUBLIC_PATHS = {
     "/api/database/status",
     "/api/database/tables",
     "/api/database/readiness",
+    "/api/stream/status",
 }
 
 
@@ -84,6 +85,12 @@ def get_required_roles(path: str, method: str) -> Optional[Set[str]]:
 
     if path.startswith("/api/database/admin"):
         return ADMIN_ROLES
+
+    if path.startswith("/api/stream/admin"):
+        return ADMIN_ROLES
+
+    if path.startswith("/api/stream/emergency"):
+        return EMERGENCY_ROLES
 
     if path in {"/api/demo/reset", "/api/demo/seed"}:
         return {"admin"}
