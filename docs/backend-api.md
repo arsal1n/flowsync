@@ -1381,3 +1381,24 @@ Required roles:
 ```text
 admin
 rta_operator
+
+$marker = "# Backend Test Suite"
+
+if ((Get-Content docs\backend-api.md -Raw) -notlike "*$marker*") {
+@'
+
+---
+
+# Backend Test Suite
+
+The backend now includes an automated pytest test suite.
+
+## New Files
+
+```text
+backend/tests/conftest.py
+backend/tests/test_01_system_auth.py
+backend/tests/test_02_routing_navigation.py
+backend/tests/test_03_live_jobs_database.py
+backend/tests/test_04_provider_contract.py
+docs/test-suite.md
