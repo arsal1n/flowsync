@@ -1363,3 +1363,21 @@ Required roles:
 ```text
 admin
 rta_operator
+
+---
+
+# Background Jobs
+
+The backend now supports admin-controlled background jobs.
+
+These jobs help FlowSync behave more like a production backend by handling cleanup, snapshots, scans, and refresh operations.
+
+## Protected Access
+
+All background job endpoints are protected.
+
+Required roles:
+
+```text
+admin
+rta_operator

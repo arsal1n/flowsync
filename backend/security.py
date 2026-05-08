@@ -72,6 +72,9 @@ def get_required_roles(path: str, method: str) -> Optional[Set[str]]:
     if path.startswith("/api/admin"):
         return ADMIN_ROLES
 
+    if path.startswith("/api/jobs"):
+        return ADMIN_ROLES
+
     if path in {"/api/demo/reset", "/api/demo/seed"}:
         return {"admin"}
 
