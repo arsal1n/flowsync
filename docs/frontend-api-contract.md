@@ -8,7 +8,11 @@ Swagger:
 
 http://127.0.0.1:8000/docs
 
-## Main frontend flow
+Health check:
+
+GET /api/health
+
+## Main Frontend Flow
 
 1. User logs in.
 2. User searches start and destination.
@@ -16,8 +20,9 @@ http://127.0.0.1:8000/docs
 4. Frontend displays route cards and map polyline.
 5. User starts navigation.
 6. Frontend polls live navigation.
-7. User ends trip.
-8. Frontend displays trip summary.
+7. User updates trip progress.
+8. User ends trip.
+9. Frontend displays trip summary.
 
 ## Authentication
 
@@ -30,22 +35,22 @@ Request:
   "password": "flowsync123"
 }
 
-Use token:
+Use the returned token:
 
 Authorization: Bearer TOKEN_HERE
 
-## Location search
+## Location Search
 
 GET /api/locations/search?q=dubai
 
-Used for:
+Frontend uses this for:
 
-- autocomplete
-- dropdown search
+- autocomplete dropdown
 - start marker
 - destination marker
+- map search
 
-## Route recommendation
+## Route Recommendation
 
 POST /api/routes/recommend
 
@@ -59,7 +64,7 @@ Request:
   "user_role": "driver"
 }
 
-Frontend must use:
+Frontend must use these response fields:
 
 - recommended_route.route_name
 - recommended_route.estimated_time
@@ -78,7 +83,7 @@ Frontend must use:
 - routing_provider
 - provider_status
 
-## Start navigation
+## Start Navigation
 
 POST /api/trips/start
 
@@ -99,13 +104,13 @@ Frontend must store:
 - session.session_id
 - request_id
 
-## Live navigation
+## Live Navigation
 
 GET /api/live/navigation/{session_id}
 
-Poll every 3 seconds during navigation.
+Poll every 3 seconds while navigation is active.
 
-## Update progress
+## Update Navigation Progress
 
 POST /api/trips/progress
 
@@ -116,7 +121,7 @@ Request:
   "current_step_index": 1
 }
 
-## End trip
+## End Trip
 
 POST /api/trips/end
 
@@ -133,7 +138,7 @@ Allowed statuses:
 - cancelled
 - interrupted
 
-## Trip summary
+## Trip Summary
 
 GET /api/trips/{request_id}/summary
 
@@ -157,12 +162,12 @@ POST /api/alerts/create
 
 GET /api/live/feed
 
-## Frontend pages to build
+## Frontend Pages To Build
 
 - Login page
 - Driver dashboard
 - Location search page
-- Route cards page
+- Route recommendation cards
 - Interactive map page
 - Turn-by-turn navigation panel
 - Parking prediction page
@@ -170,3 +175,17 @@ GET /api/live/feed
 - Trip summary page
 - Admin redirect page
 - Emergency redirect page
+
+## Frontend Integration Checklist
+
+- Login using /api/auth/login
+- Store Bearer token
+- Use /api/locations/search for dropdown search
+- Use /api/routes/recommend for route cards and map polyline
+- Use coordinates/polyline to draw map route
+- Use database_record.request_id when starting navigation
+- Use /api/trips/start to create session
+- Poll /api/live/navigation/{session_id}
+- Use /api/trips/progress to update current step
+- Use /api/trips/end when trip finishes
+- Use /api/trips/{request_id}/summary for final summary screen
