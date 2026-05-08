@@ -660,3 +660,7 @@ register_auth_routes(app)
 from live_update_routes import register_live_update_routes
 
 register_live_update_routes(app)
+
+from background_job_routes import register_background_job_routes
+
+register_background_job_routes(app)
