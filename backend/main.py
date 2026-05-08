@@ -680,3 +680,7 @@ register_realtime_stream_routes(app)
 from api_contract_routes import register_api_contract_routes
 
 register_api_contract_routes(app)
+
+from final_completion_routes import register_final_completion_routes
+
+register_final_completion_routes(app)
