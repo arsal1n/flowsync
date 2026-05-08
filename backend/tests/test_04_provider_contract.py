@@ -1,5 +1,4 @@
-@'
-from conftest import assert_ok
+﻿from conftest import assert_ok
 
 
 def test_deployment_status_contains_provider_and_database_status(client):
@@ -45,4 +44,3 @@ def test_route_provider_contract_fields(client):
     assert "coordinates" in route
     assert "polyline" in route
     assert "turn_by_turn_steps" in route
-'@ | Set-Content backend\tests\test_04_provider_contract.py -Encoding UTF8

@@ -1,5 +1,4 @@
-@'
-import sys
+﻿import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -70,11 +69,9 @@ def auth_headers(token: str) -> Dict[str, str]:
 
 def extract_request_id(route_payload: Dict[str, Any]) -> Optional[int]:
     database_record = route_payload.get("database_record") or {}
-
     request_id = database_record.get("request_id")
 
     if request_id is not None:
         return request_id
 
     return route_payload.get("request_id")
-'@ | Set-Content backend\tests\conftest.py -Encoding UTF8
