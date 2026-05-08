@@ -17,6 +17,13 @@ PUBLIC_PATHS = {
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/roles",
+    "/api/health",
+    "/api/deployment/status",
+    "/api/deployment/checklist",
+    "/api/backend/feature-coverage",
+    "/api/database/status",
+    "/api/database/tables",
+    "/api/database/readiness",
 }
 
 
@@ -73,6 +80,9 @@ def get_required_roles(path: str, method: str) -> Optional[Set[str]]:
         return ADMIN_ROLES
 
     if path.startswith("/api/jobs"):
+        return ADMIN_ROLES
+
+    if path.startswith("/api/database/admin"):
         return ADMIN_ROLES
 
     if path in {"/api/demo/reset", "/api/demo/seed"}:
