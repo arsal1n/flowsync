@@ -676,3 +676,7 @@ register_database_routes(app)
 from realtime_routes import register_realtime_stream_routes
 
 register_realtime_stream_routes(app)
+
+from api_contract_routes import register_api_contract_routes
+
+register_api_contract_routes(app)
