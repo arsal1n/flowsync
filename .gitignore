@@ -1,6 +1,14 @@
-backend/venv/
+cd "C:\Users\githu\OneDrive\Desktop\Flowsyns Githu\flowsync"
+
+$marker = "backend/backups/"
+
+if ((Get-Content .gitignore -Raw) -notlike "*$marker*") {
+@'
+
+# Backend generated files
+backend/backups/
+backend/flowsync.db
 backend/__pycache__/
-__pycache__/
-*.pyc
-.env
-*.db
+backend/venv/
+'@ | Add-Content .gitignore
+}

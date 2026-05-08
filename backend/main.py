@@ -669,3 +669,7 @@ register_background_job_routes(app)
 from deployment_routes import register_deployment_routes
 
 register_deployment_routes(app)
+
+from database_routes import register_database_routes
+
+register_database_routes(app)
