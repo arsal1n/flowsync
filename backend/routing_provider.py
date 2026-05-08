@@ -2,6 +2,13 @@ from copy import deepcopy
 from typing import Dict, List
 
 from config import get_routing_provider_name, is_mock_fallback_enabled
+from real_map_provider import get_openrouteservice_route_options
+
+
+REAL_ROUTING_PROVIDERS = {
+    "openrouteservice",
+    "ors",
+}
 
 
 def step(instruction, distance_m, duration_min, maneuver, road_name, lat, lng):
@@ -181,6 +188,41 @@ def get_provider_route_options(start_location: str, destination: str) -> Dict:
             "provider": "mock",
             "provider_status": "mock_fallback",
             "routes": get_mock_route_options(start_location, destination),
+        }
+
+    if provider in REAL_ROUTING_PROVIDERS:
+        real_result = get_openrouteservice_route_options(
+            start_location=start_location,
+            destination=destination,
+        )
+
+        if real_result.get("success"):
+            return {
+                "provider": "openrouteservice",
+                "provider_status": "real_routing_success",
+                "routes": real_result["routes"],
+            }
+
+        if is_mock_fallback_enabled():
+            routes = get_mock_route_options(start_location, destination)
+
+            for route in routes:
+                route["provider"] = "openrouteservice"
+                route["provider_status"] = "mock_fallback_after_real_provider_failure"
+                route["real_provider_error"] = real_result.get("provider_error") or real_result.get("message")
+
+            return {
+                "provider": "openrouteservice",
+                "provider_status": "mock_fallback_after_real_provider_failure",
+                "routes": routes,
+                "real_provider_error": real_result.get("provider_error") or real_result.get("message"),
+            }
+
+        return {
+            "provider": "openrouteservice",
+            "provider_status": real_result.get("provider_status", "real_provider_failed"),
+            "routes": [],
+            "error": real_result.get("provider_error") or real_result.get("message"),
         }
 
     if is_mock_fallback_enabled():
