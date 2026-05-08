@@ -673,3 +673,6 @@ register_deployment_routes(app)
 from database_routes import register_database_routes
 
 register_database_routes(app)
+from realtime_routes import register_realtime_stream_routes
+
+register_realtime_stream_routes(app)
