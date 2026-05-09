@@ -2,11 +2,6 @@
 
 const BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
-/**
- * Shared helper for backend API calls.
- * This file is prepared for backend integration, but the app will not use it
- * until we connect it in later steps.
- */
 async function apiRequest(endpoint, options = {}) {
   const response = await fetch(`${BACKEND_BASE_URL}${endpoint}`, {
     headers: {
@@ -28,7 +23,7 @@ async function apiRequest(endpoint, options = {}) {
     const message =
       data?.detail ||
       data?.message ||
-      `Backend request failed: ${response.status}`;
+      `Backend request failed with status ${response.status}`;
 
     throw new Error(message);
   }
@@ -37,17 +32,22 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 /**
- * Reads the backend route contract.
- * Endpoint:
- * GET /api/client/route-contract
+ * Backend contract/status endpoints
  */
 export async function getRouteContract() {
   return apiRequest("/api/client/route-contract");
 }
 
+export async function getClientBootstrap() {
+  return apiRequest("/api/client/bootstrap");
+}
+
+export async function getClientEndpoints() {
+  return apiRequest("/api/client/endpoints");
+}
+
 /**
- * Searches backend-supported Dubai locations.
- * Endpoint:
+ * Location search
  * GET /api/locations/search?q=dubai
  */
 export async function searchLocations(query) {
@@ -61,8 +61,7 @@ export async function searchLocations(query) {
 }
 
 /**
- * Requests a backend route recommendation.
- * Endpoint:
+ * Route recommendation
  * POST /api/routes/recommend
  */
 export async function recommendRoute({
@@ -89,8 +88,7 @@ export async function recommendRoute({
 }
 
 /**
- * Starts a trip/navigation session.
- * Endpoint:
+ * Start navigation session
  * POST /api/trips/start
  */
 export async function startTrip(routePayload) {
@@ -101,8 +99,27 @@ export async function startTrip(routePayload) {
 }
 
 /**
- * Gets live navigation state by session id.
- * Endpoint:
+ * Get active navigation sessions
+ * GET /api/trips/active
+ */
+export async function getActiveTrips() {
+  return apiRequest("/api/trips/active");
+}
+
+/**
+ * Get navigation session detail
+ * GET /api/trips/session/{session_id}
+ */
+export async function getTripSession(sessionId) {
+  if (!sessionId) {
+    throw new Error("Session id is required.");
+  }
+
+  return apiRequest(`/api/trips/session/${sessionId}`);
+}
+
+/**
+ * Live navigation polling
  * GET /api/live/navigation/{session_id}
  */
 export async function getLiveNavigation(sessionId) {
@@ -114,8 +131,15 @@ export async function getLiveNavigation(sessionId) {
 }
 
 /**
+ * Live navigation overview
+ * GET /api/live/navigation
+ */
+export async function getLiveNavigationOverview() {
+  return apiRequest("/api/live/navigation");
+}
+
+/**
  * Sends simulated navigation progress.
- * Endpoint:
  * POST /api/trips/progress
  */
 export async function updateTripProgress(sessionId, currentStepIndex) {
@@ -133,8 +157,19 @@ export async function updateTripProgress(sessionId, currentStepIndex) {
 }
 
 /**
- * Ends a trip/navigation session.
- * Endpoint:
+ * Gets navigation session events.
+ * GET /api/trips/session/{session_id}/events
+ */
+export async function getTripSessionEvents(sessionId) {
+  if (!sessionId) {
+    throw new Error("Session id is required.");
+  }
+
+  return apiRequest(`/api/trips/session/${sessionId}/events`);
+}
+
+/**
+ * Ends navigation session.
  * POST /api/trips/end
  */
 export async function endTrip(sessionId, status = "completed") {
@@ -152,8 +187,7 @@ export async function endTrip(sessionId, status = "completed") {
 }
 
 /**
- * Gets a trip summary after ending a trip.
- * Endpoint:
+ * Gets trip summary after trip lifecycle is saved.
  * GET /api/trips/{request_id}/summary
  */
 export async function getTripSummary(requestId) {
@@ -165,8 +199,7 @@ export async function getTripSummary(requestId) {
 }
 
 /**
- * Gets driver alerts.
- * Endpoint:
+ * Driver alerts
  * GET /api/alerts/driver
  */
 export async function getDriverAlerts() {
@@ -174,10 +207,30 @@ export async function getDriverAlerts() {
 }
 
 /**
- * Gets the live feed.
- * Endpoint:
+ * Live feed
  * GET /api/live/feed
  */
 export async function getLiveFeed() {
   return apiRequest("/api/live/feed");
+}
+
+/**
+ * Stream navigation endpoint URL.
+ * This returns the URL only because EventSource needs a direct URL.
+ * GET /api/stream/navigation/{session_id}
+ */
+export function getNavigationStreamUrl(sessionId) {
+  if (!sessionId) {
+    throw new Error("Session id is required.");
+  }
+
+  return `${BACKEND_BASE_URL}/api/stream/navigation/${sessionId}`;
+}
+
+/**
+ * Stream feed endpoint URL.
+ * GET /api/stream/feed
+ */
+export function getStreamFeedUrl() {
+  return `${BACKEND_BASE_URL}/api/stream/feed`;
 }

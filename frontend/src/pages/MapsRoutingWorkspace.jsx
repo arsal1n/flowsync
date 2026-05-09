@@ -1,6 +1,6 @@
 // frontend/src/pages/MapsRoutingWorkspace.jsx
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import LocationSearch from "../components/LocationSearch";
 import InteractiveMap from "../components/InteractiveMap";
@@ -13,12 +13,15 @@ import {
   startTrip,
   updateTripProgress,
   endTrip,
+  getLiveNavigation,
 } from "../services/backendRouteService";
 
 import {
   buildNavigationState,
   getTurnByTurnSteps,
 } from "../utils/navigationUtils";
+
+import { getRouteLineFromRoute } from "../utils/routePolylineUtils";
 
 import {
   buildRecommendRouteRequest,
@@ -29,111 +32,22 @@ import {
 
 import "../styles/mapsRoutingWorkspace.css";
 
-function buildFallbackRoute(startLocation, destinationLocation) {
-  const start = normalizeLocationSelection(startLocation);
-  const destination = normalizeLocationSelection(destinationLocation);
+function getRouteEndpointPosition(route, type) {
+  const routeLine = getRouteLineFromRoute(route);
 
-  const startPosition = start.position || [25.1972, 55.2744];
-  const destinationPosition = destination.position || [25.08, 55.14];
+  if (!Array.isArray(routeLine) || routeLine.length === 0) {
+    return null;
+  }
 
-  const route = {
-    route_name: "Mock Backend Fallback Route",
-    estimated_time: 22,
-    distance_km: 22.1,
-    congestion_score: 35,
-    assigned_users: 0,
-    route_score: 82,
-    coordinates: [
-      {
-        lat: startPosition[0],
-        lng: startPosition[1],
-      },
-      {
-        lat: 25.185,
-        lng: 55.2636,
-      },
-      {
-        lat: destinationPosition[0],
-        lng: destinationPosition[1],
-      },
-    ],
-    polyline: "",
-    turn_by_turn_steps: [
-      {
-        instruction: `Start from ${start.name || "start location"}`,
-        distance_m: 400,
-        duration_min: 2,
-        maneuver: "depart",
-        road_name: "Local Road",
-        lat: startPosition[0],
-        lng: startPosition[1],
-      },
-      {
-        instruction: "Continue toward Sheikh Zayed Road",
-        distance_m: 8500,
-        duration_min: 9,
-        maneuver: "straight",
-        road_name: "Sheikh Zayed Road",
-        lat: 25.185,
-        lng: 55.2636,
-      },
-      {
-        instruction: `Arrive at ${destination.name || "destination"}`,
-        distance_m: 500,
-        duration_min: 2,
-        maneuver: "arrive",
-        road_name: "Destination Road",
-        lat: destinationPosition[0],
-        lng: destinationPosition[1],
-      },
-    ],
-    alerts: [
-      {
-        id: "mock-alert-1",
-        title: "Moderate congestion",
-        message: "Traffic may be slower near central Dubai.",
-        severity: "medium",
-        road_name: "Sheikh Zayed Road",
-        lat: 25.185,
-        lng: 55.2636,
-      },
-    ],
-    incidents: [],
-  };
+  if (type === "start") {
+    return routeLine[0];
+  }
 
-  const alternativeRoute = {
-    ...route,
-    route_name: "Alternative Route",
-    estimated_time: 27,
-    distance_km: 24.3,
-    congestion_score: 55,
-    route_score: 74,
-    coordinates: [
-      {
-        lat: startPosition[0],
-        lng: startPosition[1],
-      },
-      {
-        lat: 25.2048,
-        lng: 55.2708,
-      },
-      {
-        lat: destinationPosition[0],
-        lng: destinationPosition[1],
-      },
-    ],
-    alerts: [],
-  };
+  if (type === "destination") {
+    return routeLine[routeLine.length - 1];
+  }
 
-  return {
-    recommended_route: route,
-    all_routes: [route, alternativeRoute],
-    routing_provider: "mock_frontend_fallback",
-    provider_status: "backend_not_available",
-    database_record: {
-      request_id: "mock-request-id",
-    },
-  };
+  return null;
 }
 
 function MapsRoutingWorkspace() {
@@ -151,6 +65,7 @@ function MapsRoutingWorkspace() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [sessionId, setSessionId] = useState(null);
   const [requestId, setRequestId] = useState(null);
+  const [liveNavigationPayload, setLiveNavigationPayload] = useState(null);
 
   const normalizedRouteData = useMemo(
     () => normalizeRouteResponse(routeResponse),
@@ -167,6 +82,14 @@ function MapsRoutingWorkspace() {
   const startSelection = normalizeLocationSelection(startLocation);
   const destinationSelection = normalizeLocationSelection(destinationLocation);
 
+  const startMapPoint =
+    startSelection.position ||
+    getRouteEndpointPosition(activeSelectedRoute, "start");
+
+  const destinationMapPoint =
+    destinationSelection.position ||
+    getRouteEndpointPosition(activeSelectedRoute, "destination");
+
   const navigationState = useMemo(() => {
     return buildNavigationState({
       selectedRoute: activeSelectedRoute,
@@ -174,6 +97,7 @@ function MapsRoutingWorkspace() {
       sessionId,
       requestId,
       status: isNavigationActive ? "active" : "idle",
+      liveNavigationPayload,
     });
   }, [
     activeSelectedRoute,
@@ -181,15 +105,57 @@ function MapsRoutingWorkspace() {
     sessionId,
     requestId,
     isNavigationActive,
+    liveNavigationPayload,
   ]);
+
+  useEffect(() => {
+    if (!isNavigationActive || !sessionId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function pollLiveNavigation() {
+      try {
+        const payload = await getLiveNavigation(sessionId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setLiveNavigationPayload(payload);
+      } catch (error) {
+        console.error(error);
+
+        if (cancelled) {
+          return;
+        }
+
+        setLiveNavigationPayload(null);
+        setErrorMessage(
+          error.message || "Live navigation polling failed."
+        );
+      }
+    }
+
+    pollLiveNavigation();
+
+    const intervalId = setInterval(pollLiveNavigation, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [isNavigationActive, sessionId]);
 
   async function handleFindRoute(searchPayload) {
     setIsLoadingRoute(true);
     setErrorMessage("");
-    setStatusMessage("Requesting route recommendation...");
+    setStatusMessage("Requesting route recommendation from backend...");
     setIsNavigationActive(false);
     setCurrentStepIndex(0);
     setSessionId(null);
+    setLiveNavigationPayload(null);
 
     const routeRequest = buildRecommendRouteRequest({
       startLocation: searchPayload.start_location,
@@ -213,24 +179,23 @@ function MapsRoutingWorkspace() {
       setRouteResponse(backendResponse);
       setSelectedRoute(normalized.selectedRoute);
       setRequestId(normalized.requestId);
-      setStatusMessage("Backend route recommendation loaded.");
+
+      setStatusMessage(
+        normalized.message ||
+          "Backend route recommendation loaded successfully."
+      );
     } catch (error) {
       console.error(error);
 
-      const fallbackResponse = buildFallbackRoute(
-        startLocation,
-        destinationLocation
-      );
+      setRouteResponse(null);
+      setSelectedRoute(null);
+      setRequestId(null);
 
-      const normalized = normalizeRouteResponse(fallbackResponse);
-
-      setRouteResponse(fallbackResponse);
-      setSelectedRoute(normalized.selectedRoute);
-      setRequestId(normalized.requestId);
-      setStatusMessage(
-        "Backend is not available yet. Showing frontend fallback route."
+      setStatusMessage("");
+      setErrorMessage(
+        error.message ||
+          "Backend route request failed. Make sure the backend is running."
       );
-      setErrorMessage(error.message || "Backend route request failed.");
     } finally {
       setIsLoadingRoute(false);
     }
@@ -244,6 +209,7 @@ function MapsRoutingWorkspace() {
 
     setErrorMessage("");
     setStatusMessage("Starting navigation session...");
+    setLiveNavigationPayload(null);
 
     const tripPayload = buildTripStartPayload({
       selectedRoute: activeSelectedRoute,
@@ -262,25 +228,30 @@ function MapsRoutingWorkspace() {
         response?.sessionId ||
         null;
 
-      setSessionId(backendSessionId || "mock-session-id");
+      if (!backendSessionId) {
+        throw new Error("Backend did not return a session_id.");
+      }
+
+      setSessionId(backendSessionId);
       setIsNavigationActive(true);
       setCurrentStepIndex(0);
-      setStatusMessage("Navigation started.");
+      setStatusMessage("Navigation started. Live updates polling every 3 seconds.");
     } catch (error) {
       console.error(error);
 
-      setSessionId("mock-session-id");
-      setIsNavigationActive(true);
-      setCurrentStepIndex(0);
-      setStatusMessage(
-        "Backend trip start is not available yet. Running simulated navigation."
+      setIsNavigationActive(false);
+      setSessionId(null);
+      setLiveNavigationPayload(null);
+      setStatusMessage("");
+      setErrorMessage(
+        error.message ||
+          "Failed to start navigation. Check the backend trip endpoint."
       );
-      setErrorMessage(error.message || "Backend trip start failed.");
     }
   }
 
   async function handleNextStep() {
-    if (!activeSelectedRoute) {
+    if (!activeSelectedRoute || !isNavigationActive) {
       return;
     }
 
@@ -290,9 +261,10 @@ function MapsRoutingWorkspace() {
 
     setCurrentStepIndex(nextIndex);
 
-    if (sessionId && sessionId !== "mock-session-id") {
+    if (sessionId) {
       try {
-        await updateTripProgress(sessionId, nextIndex);
+        const response = await updateTripProgress(sessionId, nextIndex);
+        setLiveNavigationPayload(response);
       } catch (error) {
         console.error(error);
         setErrorMessage(error.message || "Failed to update trip progress.");
@@ -301,25 +273,32 @@ function MapsRoutingWorkspace() {
   }
 
   async function handleEndNavigation() {
-    setStatusMessage("Ending navigation...");
-
-    if (sessionId && sessionId !== "mock-session-id") {
-      try {
-        await endTrip(sessionId, "completed");
-      } catch (error) {
-        console.error(error);
-        setErrorMessage(error.message || "Failed to end trip.");
-      }
+    if (!sessionId) {
+      setIsNavigationActive(false);
+      setLiveNavigationPayload(null);
+      setStatusMessage("Navigation ended.");
+      return;
     }
 
-    setIsNavigationActive(false);
-    setSessionId(null);
-    setStatusMessage("Navigation ended.");
+    setStatusMessage("Ending navigation...");
+
+    try {
+      await endTrip(sessionId, "completed");
+      setStatusMessage("Navigation ended.");
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(error.message || "Failed to end trip.");
+    } finally {
+      setIsNavigationActive(false);
+      setSessionId(null);
+      setLiveNavigationPayload(null);
+    }
   }
 
   function handleRouteSelect(route) {
     setSelectedRoute(route);
     setCurrentStepIndex(0);
+    setLiveNavigationPayload(null);
   }
 
   return (
@@ -327,8 +306,8 @@ function MapsRoutingWorkspace() {
       <header className="workspace-header">
         <h1>Maps Routing Integration Workspace</h1>
         <p>
-          Temporary workspace for backend route integration, route alternatives,
-          navigation mode, and map alerts.
+          Backend-connected workspace for route recommendations, route
+          alternatives, turn-by-turn navigation, and map alerts.
         </p>
       </header>
 
@@ -351,8 +330,8 @@ function MapsRoutingWorkspace() {
       <div className="maps-routing-grid">
         <div className="maps-routing-main">
           <InteractiveMap
-            startPoint={startSelection.position}
-            destPoint={destinationSelection.position}
+            startPoint={startMapPoint}
+            destPoint={destinationMapPoint}
             routeOptions={routeOptions}
             selectedRoute={activeSelectedRoute}
             onRouteSelect={handleRouteSelect}
@@ -381,7 +360,10 @@ function MapsRoutingWorkspace() {
             onEndNavigation={handleEndNavigation}
           />
 
-          <AlertsPanel selectedRoute={activeSelectedRoute} />
+          <AlertsPanel
+            selectedRoute={activeSelectedRoute}
+            liveAlerts={navigationState.alerts}
+          />
         </aside>
       </div>
     </div>
