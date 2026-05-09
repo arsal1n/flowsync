@@ -146,3 +146,102 @@ Future production upgrade:
 ## Backend Complete v1 Statement
 
 FlowSync Backend v1 is ready for frontend, mobile, maps, database, and admin dashboard integration.
+---
+
+## Database Handoff for Frontend, Maps, and Backend Teams
+
+### Frontend Team
+
+The frontend should use database-backed data only through backend API endpoints.
+
+Frontend should not directly open or edit:
+
+```text
+backend/flowsync.db
+```
+
+Frontend should use API data for:
+
+```text
+location search
+saved places
+trip requests
+trip sessions
+route recommendations
+alerts
+dashboard analytics
+```
+
+### Maps/Routing Team
+
+The maps module should use route and location data from backend APIs only.
+
+Maps should consume:
+
+```text
+route geometry
+start coordinates
+destination coordinates
+route steps
+alerts
+navigation events
+```
+
+The maps module should not manually edit database files.
+
+### Backend Team
+
+The backend owns database access and should expose database-backed functionality through FastAPI.
+
+Important database-backed areas:
+
+```text
+auth users
+auth sessions
+locations
+saved places
+trip sessions
+navigation events
+route assignments
+route steps
+alerts
+traffic sensor readings
+parking sensor readings
+background job runs
+trip lifecycle records
+```
+
+### Production Database Note
+
+Local development uses SQLite:
+
+```text
+backend/flowsync.db
+```
+
+Production should use PostgreSQL through:
+
+```text
+DATABASE_URL=postgresql://user:password@host:5432/flowsync
+```
+
+Database migrations, hosted PostgreSQL setup, and production backup automation are future deployment tasks.
+
+### Team Rule
+
+The database file should not be manually edited.
+
+Correct flow:
+
+```text
+Frontend → FastAPI Backend → Database
+Maps → FastAPI Backend → Database
+```
+
+Incorrect flow:
+
+```text
+Frontend → SQLite file
+Maps → SQLite file
+Manual DB editing
+```
