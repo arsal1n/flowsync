@@ -1,194 +1,417 @@
-from copy import deepcopy
-from typing import Dict, List
+﻿from copy import deepcopy
+from math import atan2, cos, radians, sin, sqrt
+from typing import Any, Dict, List, Optional
 
 from config import get_routing_provider_name, is_mock_fallback_enabled
 from real_map_provider import get_openrouteservice_route_options
 
+REAL_ROUTING_PROVIDERS = {"openrouteservice", "ors"}
 
-REAL_ROUTING_PROVIDERS = {
-    "openrouteservice",
-    "ors",
-}
+PLACE_CATALOG = [
+    {"name": "Dubai Mall", "aliases": ["dubai mall", "the dubai mall"], "lat": 25.1972, "lng": 55.2744, "category": "mall", "city": "Dubai"},
+    {"name": "Burj Khalifa", "aliases": ["burj khalifa", "downtown tower"], "lat": 25.1975, "lng": 55.2743, "category": "landmark", "city": "Dubai"},
+    {"name": "Downtown Dubai", "aliases": ["downtown", "downtown dubai"], "lat": 25.1948, "lng": 55.2708, "category": "district", "city": "Dubai"},
+    {"name": "Business Bay", "aliases": ["business bay"], "lat": 25.1860, "lng": 55.2608, "category": "business", "city": "Dubai"},
+    {"name": "Dubai Marina", "aliases": ["marina", "dubai marina"], "lat": 25.0800, "lng": 55.1400, "category": "district", "city": "Dubai"},
+    {"name": "JBR", "aliases": ["jbr", "jumeirah beach residence"], "lat": 25.0793, "lng": 55.1338, "category": "beach", "city": "Dubai"},
+    {"name": "Palm Jumeirah", "aliases": ["palm", "palm jumeirah"], "lat": 25.1124, "lng": 55.1390, "category": "landmark", "city": "Dubai"},
+    {"name": "Mall of the Emirates", "aliases": ["moe", "mall of emirates", "mall of the emirates"], "lat": 25.1181, "lng": 55.2006, "category": "mall", "city": "Dubai"},
+    {"name": "DXB Airport", "aliases": ["dxb", "dxb airport", "dubai airport", "dubai international airport"], "lat": 25.2532, "lng": 55.3657, "category": "airport", "city": "Dubai"},
+    {"name": "Dubai Festival City", "aliases": ["festival city", "dubai festival city"], "lat": 25.2222, "lng": 55.3494, "category": "mall", "city": "Dubai"},
+    {"name": "Deira City Centre", "aliases": ["deira", "city centre deira", "deira city centre"], "lat": 25.2536, "lng": 55.3306, "category": "mall", "city": "Dubai"},
+    {"name": "Dubai Silicon Oasis", "aliases": ["dso", "silicon oasis", "dubai silicon oasis"], "lat": 25.1250, "lng": 55.3800, "category": "technology", "city": "Dubai"},
+    {"name": "Academic City", "aliases": ["academic city", "dubai academic city"], "lat": 25.1256, "lng": 55.4209, "category": "education", "city": "Dubai"},
+    {"name": "Dubai Internet City", "aliases": ["internet city", "dubai internet city"], "lat": 25.0953, "lng": 55.1562, "category": "business", "city": "Dubai"},
+    {"name": "Dubai Media City", "aliases": ["media city", "dubai media city"], "lat": 25.0923, "lng": 55.1525, "category": "business", "city": "Dubai"},
+    {"name": "Jumeirah", "aliases": ["jumeirah", "jumeirah beach"], "lat": 25.2048, "lng": 55.2553, "category": "district", "city": "Dubai"},
+    {"name": "Sharjah", "aliases": ["sharjah", "shj", "sharjah city"], "lat": 25.3463, "lng": 55.4209, "category": "city", "city": "Sharjah"},
+    {"name": "Sharjah City Centre", "aliases": ["sharjah city centre", "city centre sharjah", "shj city centre"], "lat": 25.3315, "lng": 55.3955, "category": "mall", "city": "Sharjah"},
+    {"name": "University City Sharjah", "aliases": ["university city", "university city sharjah"], "lat": 25.2867, "lng": 55.4636, "category": "education", "city": "Sharjah"},
+    {"name": "Sharjah International Airport", "aliases": ["sharjah airport", "shj airport"], "lat": 25.3286, "lng": 55.5172, "category": "airport", "city": "Sharjah"},
+]
 
 
-def step(instruction, distance_m, duration_min, maneuver, road_name, lat, lng):
+def _normalise(value: str) -> str:
+    return (value or "").strip().lower().replace("-", " ")
+
+
+def geocode_location(location: str) -> Dict[str, Any]:
+    query = _normalise(location)
+
+    for place in PLACE_CATALOG:
+        names = [place["name"].lower(), *place.get("aliases", [])]
+        if query in names:
+            return deepcopy(place)
+
+    for place in PLACE_CATALOG:
+        names = [place["name"].lower(), *place.get("aliases", [])]
+        if any(query in item or item in query for item in names):
+            return deepcopy(place)
+
+    return {
+        "name": location or "Dubai",
+        "aliases": [],
+        "lat": 25.2048,
+        "lng": 55.2708,
+        "category": "custom",
+        "city": "Dubai",
+    }
+
+
+def _haversine_km(start: Dict[str, Any], end: Dict[str, Any]) -> float:
+    radius_km = 6371.0
+    lat1 = radians(float(start["lat"]))
+    lon1 = radians(float(start["lng"]))
+    lat2 = radians(float(end["lat"]))
+    lon2 = radians(float(end["lng"]))
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    value = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    return round(radius_km * 2 * atan2(sqrt(value), sqrt(1 - value)), 1)
+
+
+def _traffic_label(score: int) -> str:
+    if score >= 8:
+        return "Heavy"
+    if score >= 6:
+        return "Moderate"
+    if score >= 4:
+        return "Light"
+    return "Clear"
+
+
+def _traffic_description(score: int) -> str:
+    label = _traffic_label(score)
+    return f"{label} traffic • {score}/10"
+
+
+def _coordinate(lat: float, lng: float) -> Dict[str, float]:
+    return {
+        "lat": round(float(lat), 6),
+        "lng": round(float(lng), 6),
+        "latitude": round(float(lat), 6),
+        "longitude": round(float(lng), 6),
+    }
+
+
+def _build_route_coordinates(
+    start: Dict[str, Any],
+    end: Dict[str, Any],
+    variant_index: int,
+) -> List[Dict[str, float]]:
+    start_lat = float(start["lat"])
+    start_lng = float(start["lng"])
+    end_lat = float(end["lat"])
+    end_lng = float(end["lng"])
+
+    curve_offsets = [
+        (0.000, 0.000),
+        (-0.018, 0.030),
+        (0.026, -0.018),
+        (0.018, 0.045),
+    ]
+
+    off_lat, off_lng = curve_offsets[variant_index % len(curve_offsets)]
+
+    coordinates = []
+
+    for index in range(7):
+        ratio = index / 6
+        bend = sin(ratio * 3.14159)
+        lat = start_lat + (end_lat - start_lat) * ratio + (off_lat * bend)
+        lng = start_lng + (end_lng - start_lng) * ratio + (off_lng * bend)
+        coordinates.append(_coordinate(lat, lng))
+
+    return coordinates
+
+
+def _route_names(start: Dict[str, Any], end: Dict[str, Any]) -> List[Dict[str, Any]]:
+    is_sharjah_route = (
+        start.get("city") == "Sharjah"
+        or end.get("city") == "Sharjah"
+        or "sharjah" in _normalise(start.get("name", ""))
+        or "sharjah" in _normalise(end.get("name", ""))
+    )
+
+    if is_sharjah_route:
+        return [
+            {"name": "Route A - Al Ittihad Road", "type": "main_road", "road": "Al Ittihad Road", "traffic": 8, "capacity": 18, "toll": 0, "eco": 4},
+            {"name": "Route B - Sheikh Mohammed Bin Zayed Road", "type": "highway", "road": "E311 / SMBZ Road", "traffic": 6, "capacity": 22, "toll": 0, "eco": 6},
+            {"name": "Route C - Emirates Road Alternative", "type": "outer_ring", "road": "E611 / Emirates Road", "traffic": 4, "capacity": 25, "toll": 0, "eco": 7},
+            {"name": "Route D - Airport Tunnel Connector", "type": "airport_connector", "road": "Airport Tunnel / D89", "traffic": 7, "capacity": 16, "toll": 0, "eco": 5},
+        ]
+
+    return [
+        {"name": "Route A - Sheikh Zayed Road", "type": "main_road", "road": "Sheikh Zayed Road", "traffic": 7, "capacity": 18, "toll": 4, "eco": 5},
+        {"name": "Route B - Al Khail Road", "type": "arterial_road", "road": "Al Khail Road", "traffic": 5, "capacity": 20, "toll": 0, "eco": 7},
+        {"name": "Route C - Business Bay Connector", "type": "city_connector", "road": "Business Bay Connector", "traffic": 4, "capacity": 12, "toll": 0, "eco": 6},
+        {"name": "Route D - Jumeirah Coastal Alternative", "type": "coastal", "road": "Jumeirah Coastal Road", "traffic": 3, "capacity": 14, "toll": 0, "eco": 8},
+    ]
+
+
+def step(
+    instruction: str,
+    distance_m: int,
+    duration_min: int,
+    maneuver: str,
+    road_name: str,
+    lat: float,
+    lng: float,
+) -> Dict[str, Any]:
     return {
         "instruction": instruction,
         "distance_m": distance_m,
         "duration_min": duration_min,
         "maneuver": maneuver,
         "road_name": road_name,
-        "lat": lat,
-        "lng": lng,
+        "lat": round(float(lat), 6),
+        "lng": round(float(lng), 6),
+        "coordinate": _coordinate(lat, lng),
     }
 
 
-MOCK_ROUTE_CATALOG = [
-    {
-        "route_name": "Route A - Sheikh Zayed Road",
-        "estimated_time": 22,
-        "distance_km": 14.5,
-        "congestion_score": 8,
-        "road_capacity": 18,
-        "route_type": "main_road",
-        "residential_impact": 1,
-        "accident_risk": 4,
+def _build_steps(
+    start: Dict[str, Any],
+    end: Dict[str, Any],
+    coordinates: List[Dict[str, float]],
+    route_name: str,
+    primary_road: str,
+    estimated_time: int,
+    distance_km: float,
+) -> List[Dict[str, Any]]:
+    segment_distance = max(500, int((distance_km * 1000) / 5))
+    segment_time = max(1, int(estimated_time / 5))
+
+    return [
+        step(
+            f"Start from {start['name']} and head toward {primary_road}.",
+            segment_distance,
+            segment_time,
+            "depart",
+            start["name"],
+            coordinates[0]["lat"],
+            coordinates[0]["lng"],
+        ),
+        step(
+            f"Merge onto {primary_road}.",
+            segment_distance,
+            segment_time,
+            "merge",
+            primary_road,
+            coordinates[1]["lat"],
+            coordinates[1]["lng"],
+        ),
+        step(
+            f"Continue on {primary_road}; follow FlowSync traffic-balanced guidance.",
+            segment_distance,
+            segment_time,
+            "straight",
+            primary_road,
+            coordinates[3]["lat"],
+            coordinates[3]["lng"],
+        ),
+        step(
+            f"Take the connector toward {end['name']}.",
+            segment_distance,
+            segment_time,
+            "exit",
+            route_name,
+            coordinates[5]["lat"],
+            coordinates[5]["lng"],
+        ),
+        step(
+            f"Arrive at {end['name']}.",
+            max(250, int(segment_distance / 2)),
+            1,
+            "arrive",
+            end["name"],
+            coordinates[-1]["lat"],
+            coordinates[-1]["lng"],
+        ),
+    ]
+
+
+def _map_bounds(coordinates: List[Dict[str, float]]) -> Dict[str, float]:
+    latitudes = [point["lat"] for point in coordinates]
+    longitudes = [point["lng"] for point in coordinates]
+
+    return {
+        "north": max(latitudes),
+        "south": min(latitudes),
+        "east": max(longitudes),
+        "west": min(longitudes),
+        "center_lat": round((max(latitudes) + min(latitudes)) / 2, 6),
+        "center_lng": round((max(longitudes) + min(longitudes)) / 2, 6),
+    }
+
+
+def _build_route_option(
+    start: Dict[str, Any],
+    end: Dict[str, Any],
+    template: Dict[str, Any],
+    index: int,
+    base_distance_km: float,
+) -> Dict[str, Any]:
+    coordinates = _build_route_coordinates(start, end, index)
+
+    distance_multiplier = [1.00, 1.08, 1.18, 1.13][index % 4]
+    distance_km = round(max(base_distance_km * distance_multiplier, 2.0), 1)
+
+    traffic_score = int(template["traffic"])
+    average_speed = [58, 66, 72, 62][index % 4]
+    estimated_time = max(
+        6,
+        int((distance_km / average_speed) * 60 + traffic_score * 1.8),
+    )
+
+    route_name = template["name"]
+    primary_road = template["road"]
+
+    turn_steps = _build_steps(
+        start=start,
+        end=end,
+        coordinates=coordinates,
+        route_name=route_name,
+        primary_road=primary_road,
+        estimated_time=estimated_time,
+        distance_km=distance_km,
+    )
+
+    traffic_label = _traffic_label(traffic_score)
+    traffic_display = _traffic_description(traffic_score)
+
+    alerts = []
+    incidents = []
+
+    if traffic_score >= 8:
+        alerts.append(
+            {
+                "type": "congestion",
+                "title": "Heavy traffic ahead",
+                "message": f"{primary_road} is currently busy. FlowSync will monitor alternatives.",
+                "severity": "high",
+            }
+        )
+        incidents.append(
+            {
+                "type": "slowdown",
+                "message": f"Slow movement detected on {primary_road}.",
+                "impact": "medium",
+            }
+        )
+    elif traffic_score >= 6:
+        alerts.append(
+            {
+                "type": "moderate_traffic",
+                "title": "Moderate traffic",
+                "message": f"{primary_road} has moderate traffic pressure.",
+                "severity": "medium",
+            }
+        )
+    else:
+        alerts.append(
+            {
+                "type": "clear_route",
+                "title": "Smooth traffic",
+                "message": f"{primary_road} is currently a smoother option.",
+                "severity": "low",
+            }
+        )
+
+    return {
+        "route_name": route_name,
+        "name": route_name,
+        "start_location": start["name"],
+        "destination": end["name"],
+        "start_coordinate": _coordinate(start["lat"], start["lng"]),
+        "destination_coordinate": _coordinate(end["lat"], end["lng"]),
+        "estimated_time": estimated_time,
+        "duration_min": estimated_time,
+        "duration_text": f"{estimated_time} min",
+        "distance_km": distance_km,
+        "distance_text": f"{distance_km} km",
+        "congestion_score": traffic_score,
+        "traffic_score": traffic_score,
+        "traffic_label": traffic_label,
+        "traffic_status": traffic_label.lower(),
+        "traffic_display": traffic_display,
+        "traffic_description": traffic_display,
+        "road_capacity": int(template["capacity"]),
+        "route_type": template["type"],
+        "residential_impact": [1, 2, 3, 2][index % 4],
+        "accident_risk": [4, 3, 2, 3][index % 4],
         "weather_risk": 2,
-        "stop_frequency": 7,
-        "fuel_estimate_liters": 1.8,
-        "toll_cost": 4,
-        "eco_score": 5,
-        "provider": "mock",
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.1915, "lng": 55.2620},
-            {"lat": 25.1667, "lng": 55.2405},
-            {"lat": 25.1212, "lng": 55.2017},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and head toward Financial Centre Road.", 900, 3, "depart", "Financial Centre Road", 25.1972, 55.2744),
-            step("Merge onto Sheikh Zayed Road southbound.", 5200, 7, "merge", "Sheikh Zayed Road", 25.1915, 55.2620),
-            step("Continue straight past Business Bay and Al Safa.", 5200, 7, "straight", "Sheikh Zayed Road", 25.1667, 55.2405),
-            step("Take the Dubai Marina exit.", 2300, 4, "exit", "Dubai Marina Exit", 25.1212, 55.2017),
-            step("Arrive near Dubai Marina.", 900, 1, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {"type": "congestion", "message": "Heavy traffic expected on Sheikh Zayed Road.", "severity": "high"},
-            {"type": "camera", "message": "Speed camera zone ahead.", "severity": "medium"},
-        ],
-        "incidents": [
-            {"type": "slowdown", "message": "Slow movement near Business Bay exit.", "impact": "medium"}
-        ],
-    },
-    {
-        "route_name": "Route B - Al Khail Road",
-        "estimated_time": 26,
-        "distance_km": 16.2,
-        "congestion_score": 4,
-        "road_capacity": 15,
-        "route_type": "arterial_road",
-        "residential_impact": 2,
-        "accident_risk": 3,
-        "weather_risk": 2,
-        "stop_frequency": 5,
-        "fuel_estimate_liters": 1.6,
-        "toll_cost": 0,
-        "eco_score": 7,
-        "provider": "mock",
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.1850, "lng": 55.2910},
-            {"lat": 25.1560, "lng": 55.2850},
-            {"lat": 25.1155, "lng": 55.2350},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and head toward Business Bay crossing.", 1200, 4, "depart", "Downtown Boulevard", 25.1972, 55.2744),
-            step("Turn toward Al Khail Road access.", 2500, 5, "turn_right", "Business Bay Crossing", 25.1850, 55.2910),
-            step("Continue on Al Khail Road.", 6500, 9, "straight", "Al Khail Road", 25.1560, 55.2850),
-            step("Take the exit toward Dubai Marina/JLT.", 4300, 6, "exit", "JLT Exit", 25.1155, 55.2350),
-            step("Arrive near Dubai Marina.", 1700, 2, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {"type": "balanced_route", "message": "Balanced route with lower congestion than Sheikh Zayed Road.", "severity": "low"}
-        ],
-        "incidents": [],
-    },
-    {
-        "route_name": "Route C - Business Bay Side Streets",
-        "estimated_time": 30,
-        "distance_km": 18.1,
-        "congestion_score": 2,
-        "road_capacity": 10,
-        "route_type": "hyperlocal_route",
-        "residential_impact": 5,
-        "accident_risk": 2,
-        "weather_risk": 3,
-        "stop_frequency": 9,
-        "fuel_estimate_liters": 1.7,
-        "toll_cost": 0,
-        "eco_score": 6,
-        "provider": "mock",
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.1900, "lng": 55.2808},
-            {"lat": 25.1788, "lng": 55.2690},
-            {"lat": 25.1400, "lng": 55.2222},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and enter Downtown side road.", 800, 3, "depart", "Downtown Side Road", 25.1972, 55.2744),
-            step("Turn through Business Bay local connector.", 3400, 8, "turn_left", "Business Bay Connector", 25.1900, 55.2808),
-            step("Continue through lower-density side streets.", 5200, 9, "straight", "Local Side Streets", 25.1788, 55.2690),
-            step("Join the Marina approach road.", 6900, 8, "merge", "Marina Approach Road", 25.1400, 55.2222),
-            step("Arrive near Dubai Marina.", 1800, 2, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {"type": "fairness_notice", "message": "Hyperlocal route used carefully to avoid overloading residential streets.", "severity": "medium"}
-        ],
-        "incidents": [],
-    },
-    {
-        "route_name": "Route D - Jumeirah Coastal Alternative",
-        "estimated_time": 28,
-        "distance_km": 17.4,
-        "congestion_score": 3,
-        "road_capacity": 12,
-        "route_type": "alternative_road",
-        "residential_impact": 3,
-        "accident_risk": 2,
-        "weather_risk": 4,
-        "stop_frequency": 6,
-        "fuel_estimate_liters": 1.5,
-        "toll_cost": 0,
-        "eco_score": 8,
-        "provider": "mock",
-        "coordinates": [
-            {"lat": 25.1972, "lng": 55.2744},
-            {"lat": 25.2048, "lng": 55.2500},
-            {"lat": 25.1900, "lng": 55.2250},
-            {"lat": 25.1350, "lng": 55.1850},
-            {"lat": 25.0800, "lng": 55.1400},
-        ],
-        "turn_steps": [
-            step("Start from Dubai Mall and move toward Jumeirah corridor.", 1600, 5, "depart", "Downtown Exit Road", 25.1972, 55.2744),
-            step("Continue toward Jumeirah coastal alternative.", 4200, 7, "straight", "Jumeirah Road", 25.2048, 55.2500),
-            step("Follow coastal connector with smoother traffic.", 5400, 8, "straight", "Coastal Connector", 25.1900, 55.2250),
-            step("Merge toward Dubai Marina approach.", 4800, 6, "merge", "Marina Approach", 25.1350, 55.1850),
-            step("Arrive near Dubai Marina.", 1400, 2, "arrive", "Dubai Marina", 25.0800, 55.1400),
-        ],
-        "alerts": [
-            {"type": "eco_route", "message": "Smoother route with lower stop-and-go driving.", "severity": "low"}
-        ],
-        "incidents": [],
-    },
-]
+        "stop_frequency": [6, 4, 3, 5][index % 4],
+        "fuel_estimate_liters": round(distance_km * 0.095, 2),
+        "toll_cost": template["toll"],
+        "eco_score": template["eco"],
+        "provider": "flowsync_simulated",
+        "provider_status": "in_app_navigation_ready_simulated_traffic",
+        "coordinates": coordinates,
+        "route_coordinates": coordinates,
+        "polyline": coordinates,
+        "turn_steps": turn_steps,
+        "turn_by_turn_steps": turn_steps,
+        "steps": turn_steps,
+        "alerts": alerts,
+        "incidents": incidents,
+        "map_bounds": _map_bounds(coordinates),
+        "in_app_navigation": True,
+        "external_navigation_required": False,
+        "navigation_mode": "in_app_map",
+        "external_navigation_url": None,
+        "message": "Route is ready for in-app map rendering and mobile navigation.",
+    }
 
 
-def get_mock_route_options(start_location: str, destination: str) -> List[Dict]:
-    routes = deepcopy(MOCK_ROUTE_CATALOG)
+def get_mock_route_options(start_location: str, destination: str) -> List[Dict[str, Any]]:
+    start = geocode_location(start_location)
+    end = geocode_location(destination)
 
-    for route in routes:
-        route["start_location"] = start_location
-        route["destination"] = destination
-        route["provider"] = "mock"
-        route["provider_status"] = "mock_fallback"
-        route["polyline"] = route["coordinates"]
-        route["turn_by_turn_steps"] = route["turn_steps"]
+    base_distance_km = _haversine_km(start, end)
+    templates = _route_names(start, end)
+
+    routes = [
+        _build_route_option(
+            start=start,
+            end=end,
+            template=template,
+            index=index,
+            base_distance_km=base_distance_km,
+        )
+        for index, template in enumerate(templates)
+    ]
 
     return routes
 
 
-def get_provider_route_options(start_location: str, destination: str) -> Dict:
-    provider = get_routing_provider_name()
+def _upgrade_real_routes(routes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    upgraded = []
 
-    if provider == "mock":
-        return {
-            "provider": "mock",
-            "provider_status": "mock_fallback",
-            "routes": get_mock_route_options(start_location, destination),
-        }
+    for route in routes:
+        next_route = deepcopy(route)
+        coords = next_route.get("coordinates") or next_route.get("polyline") or []
+
+        next_route["route_coordinates"] = coords
+        next_route["polyline"] = coords
+        next_route["in_app_navigation"] = True
+        next_route["external_navigation_required"] = False
+        next_route["navigation_mode"] = "in_app_map"
+        next_route["traffic_score"] = next_route.get("traffic_score", next_route.get("congestion_score", 5))
+        next_route["traffic_label"] = _traffic_label(int(next_route["traffic_score"]))
+        next_route["traffic_display"] = _traffic_description(int(next_route["traffic_score"]))
+        next_route["provider"] = "openrouteservice"
+        next_route["provider_status"] = "real_routing_success"
+
+        upgraded.append(next_route)
+
+    return upgraded
+
+
+def get_provider_route_options(start_location: str, destination: str) -> Dict[str, Any]:
+    provider = (get_routing_provider_name() or "mock").lower()
 
     if provider in REAL_ROUTING_PROVIDERS:
         real_result = get_openrouteservice_route_options(
@@ -200,53 +423,41 @@ def get_provider_route_options(start_location: str, destination: str) -> Dict:
             return {
                 "provider": "openrouteservice",
                 "provider_status": "real_routing_success",
-                "routes": real_result["routes"],
+                "routes": _upgrade_real_routes(real_result.get("routes", [])),
             }
 
-        if is_mock_fallback_enabled():
-            routes = get_mock_route_options(start_location, destination)
-
-            for route in routes:
-                route["provider"] = "openrouteservice"
-                route["provider_status"] = "mock_fallback_after_real_provider_failure"
-                route["real_provider_error"] = real_result.get("provider_error") or real_result.get("message")
-
+        if not is_mock_fallback_enabled():
             return {
                 "provider": "openrouteservice",
-                "provider_status": "mock_fallback_after_real_provider_failure",
-                "routes": routes,
-                "real_provider_error": real_result.get("provider_error") or real_result.get("message"),
+                "provider_status": real_result.get("provider_status", "real_provider_failed"),
+                "routes": [],
+                "error": real_result.get("provider_error") or real_result.get("message"),
             }
 
-        return {
-            "provider": "openrouteservice",
-            "provider_status": real_result.get("provider_status", "real_provider_failed"),
-            "routes": [],
-            "error": real_result.get("provider_error") or real_result.get("message"),
-        }
-
-    if is_mock_fallback_enabled():
         routes = get_mock_route_options(start_location, destination)
 
         for route in routes:
-            route["provider"] = provider
-            route["provider_status"] = "mock_fallback_until_real_api_configured"
+            route["provider"] = "openrouteservice"
+            route["provider_status"] = "simulated_fallback_after_real_provider_failure"
+            route["real_provider_error"] = real_result.get("provider_error") or real_result.get("message")
 
         return {
-            "provider": provider,
-            "provider_status": "mock_fallback_until_real_api_configured",
+            "provider": "openrouteservice",
+            "provider_status": "simulated_fallback_after_real_provider_failure",
             "routes": routes,
+            "real_provider_error": real_result.get("provider_error") or real_result.get("message"),
         }
 
+    routes = get_mock_route_options(start_location, destination)
+
     return {
-        "provider": provider,
-        "provider_status": "not_configured",
-        "routes": [],
-        "error": "Routing provider is selected but no real API integration is configured yet.",
+        "provider": "flowsync_simulated",
+        "provider_status": "in_app_navigation_ready_simulated_traffic",
+        "routes": routes,
     }
 
 
-def get_route_catalog() -> List[Dict]:
+def get_route_catalog() -> List[Dict[str, Any]]:
     return get_mock_route_options(
         start_location="Dubai Mall",
         destination="Dubai Marina",
