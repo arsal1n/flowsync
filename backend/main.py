@@ -684,3 +684,58 @@ register_api_contract_routes(app)
 from final_completion_routes import register_final_completion_routes
 
 register_final_completion_routes(app)
+
+from mobile_v2_middleware import register_mobile_v2_middleware
+
+register_mobile_v2_middleware(app)
+
+# --- FlowSync mobile v2 direct contract bridge ---
+# Forces mobile v2 navigation endpoints to use the new selected-route/session logic
+# before older backend routes can return stale 404 responses.
+
+from mobile_v2_middleware import (
+    handle_recommend as mobile_v2_handle_recommend,
+    handle_start as mobile_v2_handle_start,
+    handle_progress as mobile_v2_handle_progress,
+    handle_end as mobile_v2_handle_end,
+    handle_session_detail as mobile_v2_handle_session_detail,
+)
+
+
+@app.middleware("http")
+async def mobile_v2_direct_contract_bridge(request, call_next):
+    path = request.url.path
+    method = request.method.upper()
+
+    if method == "POST" and path == "/api/routes/recommend":
+        return await mobile_v2_handle_recommend(request)
+
+    if method == "POST" and path == "/api/trips/start":
+        return await mobile_v2_handle_start(request)
+
+    if method == "GET" and path.startswith("/api/trips/session/"):
+        return await mobile_v2_handle_session_detail(request)
+
+    if method == "POST" and path == "/api/trips/progress":
+        return await mobile_v2_handle_progress(request)
+
+    if method == "POST" and path == "/api/trips/end":
+        return await mobile_v2_handle_end(request)
+
+    return await call_next(request)
+
+# --- FlowSync mobile v2 live navigation bridge ---
+# Makes GET /api/live/navigation/{session_id} use the same mobile v2 session cache.
+
+from mobile_v2_middleware import handle_session_detail as mobile_v2_live_handle_session_detail
+
+
+@app.middleware("http")
+async def mobile_v2_live_navigation_bridge(request, call_next):
+    path = request.url.path
+    method = request.method.upper()
+
+    if method == "GET" and path.startswith("/api/live/navigation/"):
+        return await mobile_v2_live_handle_session_detail(request)
+
+    return await call_next(request)
