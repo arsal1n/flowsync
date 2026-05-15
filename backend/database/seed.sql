@@ -375,11 +375,24 @@ VALUES
 (3, 3, 5, 3, 7, 'active', 2, CURRENT_TIMESTAMP, NULL);
 
 INSERT OR IGNORE INTO navigation_progress
-(navigation_progress_id, session_id, current_step_index, latitude, longitude, speed_kmh, remaining_distance_km, remaining_time_minutes, progress_percent, event_type)
+(
+    navigation_progress_id,
+    session_id,
+    current_step_index,
+    latitude,
+    longitude,
+    speed_kmh,
+    remaining_distance_km,
+    remaining_time_minutes,
+    remaining_time_min,
+    progress_percent,
+    progress_percentage,
+    event_type
+)
 VALUES
-(1, 1, 1, 25.1850, 55.2770, 62, 21.5, 22, 25, 'location_update'),
-(2, 2, 4, 25.1850, 55.2770, 0, 0, 0, 100, 'arrived'),
-(3, 3, 2, 25.3043, 55.4846, 70, 18.0, 28, 55, 'location_update');
+(1, 1, 1, 25.1850, 55.2770, 62, 21.5, 22, 22, 25, 25, 'location_update'),
+(2, 2, 4, 25.1850, 55.2770, 0, 0, 0, 0, 100, 100, 'arrived'),
+(3, 3, 2, 25.3043, 55.4846, 70, 18.0, 28, 28, 55, 55, 'location_update');
 
 INSERT OR IGNORE INTO trip_status_history
 (status_history_id, session_id, old_status, new_status, message)
@@ -573,3 +586,137 @@ INSERT OR IGNORE INTO data_import_logs
 (data_import_log_id, import_type, provider_name, source_file, records_processed, records_inserted, records_failed, status, error_message)
 VALUES
 (1, 'seed_import', 'seed', 'backend/database/seed.sql', 150, 150, 0, 'completed', NULL);
+-- =========================================================
+-- EXTRA REAL-LIFE DUBAI LOCATION SEED DATA
+-- Approximate coordinates for demo/testing.
+-- Production should verify/import using public map APIs.
+-- =========================================================
+
+INSERT OR IGNORE INTO locations
+(location_id, area_id, category_id, name, address, latitude, longitude, external_place_id, provider_name, search_keywords, popularity_score, status)
+VALUES
+(101, NULL, 7, 'JBR', 'Jumeirah Beach Residence, Dubai, UAE', 25.0772, 55.1338, 'seed_jbr', 'manual_seed', 'jbr,jumeirah beach residence,beach,marina,walk', 88, 'active'),
+
+(102, 7, 6, 'Atlantis The Palm', 'Palm Jumeirah, Dubai, UAE', 25.1304, 55.1171, 'seed_atlantis_the_palm', 'manual_seed', 'atlantis,palm jumeirah,hotel,tourist,aquaventure', 94, 'active'),
+
+(103, NULL, 1, 'Dubai Hills Mall', 'Dubai Hills Estate, Dubai, UAE', 25.1019, 55.2388, 'seed_dubai_hills_mall', 'manual_seed', 'dubai hills mall,shopping,mall,dubai hills', 84, 'active'),
+
+(104, NULL, 6, 'City Walk', 'Al Wasl, Dubai, UAE', 25.2076, 55.2630, 'seed_city_walk', 'manual_seed', 'city walk,al wasl,shopping,restaurant,tourist', 86, 'active'),
+
+(105, NULL, 6, 'Bluewaters Island', 'Bluewaters Island, Dubai, UAE', 25.0804, 55.1223, 'seed_bluewaters', 'manual_seed', 'bluewaters island,ain dubai,jbr,tourist', 87, 'active'),
+
+(106, NULL, 4, 'Dubai Creek Harbour', 'Dubai Creek Harbour, Dubai, UAE', 25.1975, 55.3459, 'seed_dubai_creek_harbour', 'manual_seed', 'creek harbour,dubai creek,residential,waterfront', 82, 'active'),
+
+(107, NULL, 4, 'Deira', 'Deira, Dubai, UAE', 25.2695, 55.3088, 'seed_deira', 'manual_seed', 'deira,old dubai,market,gold souk,creek', 83, 'active'),
+
+(108, NULL, 4, 'Bur Dubai', 'Bur Dubai, Dubai, UAE', 25.2632, 55.2972, 'seed_bur_dubai', 'manual_seed', 'bur dubai,old dubai,creek,heritage', 82, 'active'),
+
+(109, NULL, 4, 'Al Barsha', 'Al Barsha, Dubai, UAE', 25.1124, 55.2036, 'seed_al_barsha', 'manual_seed', 'al barsha,residential,mall of emirates', 80, 'active'),
+
+(110, 5, 7, 'Jumeirah Beach', 'Jumeirah Beach, Dubai, UAE', 25.2048, 55.2520, 'seed_jumeirah_beach', 'manual_seed', 'jumeirah beach,beach,tourist,waterfront', 85, 'active'),
+
+(111, NULL, 4, 'Jumeirah 1', 'Jumeirah 1, Dubai, UAE', 25.2312, 55.2631, 'seed_jumeirah_1', 'manual_seed', 'jumeirah 1,residential,beach', 74, 'active'),
+
+(112, NULL, 4, 'Jumeirah 2', 'Jumeirah 2, Dubai, UAE', 25.2113, 55.2548, 'seed_jumeirah_2', 'manual_seed', 'jumeirah 2,residential,beach', 73, 'active'),
+
+(113, NULL, 4, 'Jumeirah 3', 'Jumeirah 3, Dubai, UAE', 25.1901, 55.2414, 'seed_jumeirah_3', 'manual_seed', 'jumeirah 3,residential,beach', 72, 'active'),
+
+(114, NULL, 4, 'Umm Suqeim', 'Umm Suqeim, Dubai, UAE', 25.1485, 55.2055, 'seed_umm_suqeim', 'manual_seed', 'umm suqeim,beach,residential,burj al arab', 81, 'active'),
+
+(115, NULL, 3, 'Dubai Internet City', 'Dubai Internet City, Dubai, UAE', 25.0952, 55.1608, 'seed_dubai_internet_city', 'manual_seed', 'internet city,dic,business,technology,offices', 83, 'active'),
+
+(116, NULL, 3, 'Dubai Media City', 'Dubai Media City, Dubai, UAE', 25.0960, 55.1566, 'seed_dubai_media_city', 'manual_seed', 'media city,dmc,business,offices,media', 82, 'active'),
+
+(117, NULL, 5, 'Dubai Knowledge Park', 'Dubai Knowledge Park, Dubai, UAE', 25.1048, 55.1647, 'seed_dubai_knowledge_park', 'manual_seed', 'knowledge park,education,university,training', 76, 'active'),
+
+(118, NULL, 4, 'Dubai Silicon Oasis', 'Dubai Silicon Oasis, Dubai, UAE', 25.1257, 55.3816, 'seed_dubai_silicon_oasis', 'manual_seed', 'silicon oasis,dso,residential,technology', 79, 'active'),
+
+(119, NULL, 4, 'International City', 'International City, Dubai, UAE', 25.1657, 55.4079, 'seed_international_city', 'manual_seed', 'international city,residential,dragon mart', 78, 'active'),
+
+(120, NULL, 1, 'Dragon Mart', 'International City, Dubai, UAE', 25.1736, 55.4098, 'seed_dragon_mart', 'manual_seed', 'dragon mart,shopping,international city,mall', 82, 'active'),
+
+(121, NULL, 4, 'Mirdif', 'Mirdif, Dubai, UAE', 25.2241, 55.4244, 'seed_mirdif', 'manual_seed', 'mirdif,residential,city centre', 79, 'active'),
+
+(122, NULL, 1, 'City Centre Mirdif', 'Mirdif, Dubai, UAE', 25.2167, 55.4073, 'seed_city_centre_mirdif', 'manual_seed', 'city centre mirdif,mirdif,mall,shopping', 86, 'active'),
+
+(123, NULL, 1, 'Dubai Festival City Mall', 'Dubai Festival City, Dubai, UAE', 25.2211, 55.3501, 'seed_dubai_festival_city_mall', 'manual_seed', 'festival city mall,shopping,creek,festival city', 85, 'active'),
+
+(124, NULL, 2, 'DXB Terminal 1', 'Dubai International Airport Terminal 1, Dubai, UAE', 25.2480, 55.3529, 'seed_dxb_terminal_1', 'manual_seed', 'dxb terminal 1,airport,dubai airport', 89, 'active'),
+
+(125, NULL, 2, 'DXB Terminal 2', 'Dubai International Airport Terminal 2, Dubai, UAE', 25.2630, 55.3863, 'seed_dxb_terminal_2', 'manual_seed', 'dxb terminal 2,airport,dubai airport', 84, 'active'),
+
+(126, NULL, 4, 'Al Nahda Dubai', 'Al Nahda, Dubai, UAE', 25.2905, 55.3760, 'seed_al_nahda_dubai', 'manual_seed', 'al nahda dubai,residential,sharjah border', 78, 'active'),
+
+(127, NULL, 4, 'Al Qusais', 'Al Qusais, Dubai, UAE', 25.2769, 55.3894, 'seed_al_qusais', 'manual_seed', 'al qusais,residential,industrial,airport side', 77, 'active'),
+
+(128, NULL, 4, 'Al Warqa', 'Al Warqa, Dubai, UAE', 25.1917, 55.4083, 'seed_al_warqa', 'manual_seed', 'al warqa,residential,mirdif,international city', 72, 'active'),
+
+(129, NULL, 6, 'Ras Al Khor Wildlife Sanctuary', 'Ras Al Khor, Dubai, UAE', 25.1905, 55.3230, 'seed_ras_al_khor_wildlife', 'manual_seed', 'ras al khor,wildlife sanctuary,flamingo,tourist', 76, 'active'),
+
+(130, NULL, 6, 'Dubai Frame', 'Zabeel Park, Dubai, UAE', 25.2355, 55.3003, 'seed_dubai_frame', 'manual_seed', 'dubai frame,zabeel,landmark,tourist', 90, 'active'),
+
+(131, NULL, 6, 'Zabeel Park', 'Zabeel, Dubai, UAE', 25.2344, 55.2956, 'seed_zabeel_park', 'manual_seed', 'zabeel park,dubai frame,park,family', 80, 'active'),
+
+(132, NULL, 6, 'Museum of the Future', 'Sheikh Zayed Road, Dubai, UAE', 25.2191, 55.2810, 'seed_museum_future', 'manual_seed', 'museum of the future,sheikh zayed road,landmark,tourist', 93, 'active'),
+
+(133, NULL, 3, 'Dubai World Trade Centre', 'Trade Centre, Dubai, UAE', 25.2262, 55.2888, 'seed_world_trade_centre', 'manual_seed', 'world trade centre,dwtc,exhibition,business', 88, 'active'),
+
+(134, NULL, 8, 'Sheikh Zayed Road', 'Sheikh Zayed Road, Dubai, UAE', 25.2048, 55.2708, 'seed_sheikh_zayed_road_location', 'manual_seed', 'sheikh zayed road,szr,e11,road,business', 94, 'active'),
+
+(135, NULL, 3, 'Dubai Design District', 'Dubai Design District, Dubai, UAE', 25.1911, 55.2988, 'seed_d3', 'manual_seed', 'dubai design district,d3,business,design', 82, 'active'),
+
+(136, NULL, 3, 'Al Quoz', 'Al Quoz, Dubai, UAE', 25.1400, 55.2260, 'seed_al_quoz', 'manual_seed', 'al quoz,industrial,warehouse,art,alserkal', 79, 'active'),
+
+(137, NULL, 4, 'Al Safa', 'Al Safa, Dubai, UAE', 25.1688, 55.2407, 'seed_al_safa', 'manual_seed', 'al safa,residential,safa park', 76, 'active'),
+
+(138, NULL, 11, 'Dubai Healthcare City', 'Dubai Healthcare City, Dubai, UAE', 25.2335, 55.3210, 'seed_dubai_healthcare_city', 'manual_seed', 'healthcare city,hospital,clinic,medical', 81, 'active'),
+
+(139, NULL, 6, 'Dubai Creek', 'Dubai Creek, Dubai, UAE', 25.2582, 55.3047, 'seed_dubai_creek', 'manual_seed', 'dubai creek,old dubai,waterfront,heritage', 84, 'active'),
+
+(140, NULL, 6, 'Gold Souk', 'Deira, Dubai, UAE', 25.2711, 55.2972, 'seed_gold_souk', 'manual_seed', 'gold souk,deira,market,old dubai', 86, 'active'),
+
+(141, NULL, 6, 'Spice Souk', 'Deira, Dubai, UAE', 25.2674, 55.2978, 'seed_spice_souk', 'manual_seed', 'spice souk,deira,market,old dubai', 82, 'active'),
+
+(142, NULL, 6, 'Global Village', 'Sheikh Mohammed Bin Zayed Road, Dubai, UAE', 25.0719, 55.3063, 'seed_global_village', 'manual_seed', 'global village,tourist,festival,family', 90, 'active'),
+
+(143, NULL, 6, 'Dubai Miracle Garden', 'Al Barsha South, Dubai, UAE', 25.0600, 55.2440, 'seed_miracle_garden', 'manual_seed', 'miracle garden,flowers,tourist,al barsha south', 88, 'active'),
+
+(144, NULL, 6, 'IMG Worlds of Adventure', 'City of Arabia, Dubai, UAE', 25.0822, 55.3164, 'seed_img_worlds', 'manual_seed', 'img worlds,theme park,tourist,city of arabia', 86, 'active'),
+
+(145, NULL, 1, 'Dubai Outlet Mall', 'Dubai-Al Ain Road, Dubai, UAE', 25.0732, 55.3995, 'seed_dubai_outlet_mall', 'manual_seed', 'outlet mall,dubai al ain road,shopping', 78, 'active'),
+
+(146, 9, 6, 'Expo City Dubai', 'Expo City Dubai, Dubai, UAE', 24.9609, 55.1507, 'seed_expo_city_extra', 'manual_seed', 'expo city,dubai south,event,tourist', 87, 'active'),
+
+(147, NULL, 3, 'Dubai Investment Park', 'Dubai Investment Park, Dubai, UAE', 24.9737, 55.1801, 'seed_dip', 'manual_seed', 'dubai investment park,dip,business,industrial,residential', 76, 'active'),
+
+(148, NULL, 3, 'Jebel Ali', 'Jebel Ali, Dubai, UAE', 24.9857, 55.0273, 'seed_jebel_ali', 'manual_seed', 'jebel ali,port,industrial,jafza', 82, 'active'),
+
+(149, NULL, 3, 'JAFZA', 'Jebel Ali Free Zone, Dubai, UAE', 24.9890, 55.0610, 'seed_jafza', 'manual_seed', 'jafza,jebel ali free zone,industrial,free zone', 80, 'active'),
+
+(150, NULL, 4, 'Al Furjan', 'Al Furjan, Dubai, UAE', 25.0276, 55.1443, 'seed_al_furjan', 'manual_seed', 'al furjan,residential,metro', 76, 'active'),
+
+(151, NULL, 4, 'Discovery Gardens', 'Discovery Gardens, Dubai, UAE', 25.0394, 55.1393, 'seed_discovery_gardens', 'manual_seed', 'discovery gardens,residential,ibn battuta', 77, 'active'),
+
+(152, NULL, 4, 'The Gardens', 'The Gardens, Dubai, UAE', 25.0466, 55.1228, 'seed_the_gardens', 'manual_seed', 'the gardens,residential,jebel ali', 73, 'active'),
+
+(153, NULL, 1, 'Ibn Battuta Mall', 'Jebel Ali Village, Dubai, UAE', 25.0446, 55.1199, 'seed_ibn_battuta_mall', 'manual_seed', 'ibn battuta mall,shopping,jebel ali,metro', 86, 'active'),
+
+(154, NULL, 4, 'Dubai Sports City', 'Dubai Sports City, Dubai, UAE', 25.0380, 55.2180, 'seed_dubai_sports_city', 'manual_seed', 'sports city,residential,stadium,cricket', 76, 'active'),
+
+(155, NULL, 4, 'Motor City', 'Motor City, Dubai, UAE', 25.0469, 55.2390, 'seed_motor_city', 'manual_seed', 'motor city,residential,autodrome', 75, 'active'),
+
+(156, NULL, 4, 'Arabian Ranches', 'Arabian Ranches, Dubai, UAE', 25.0526, 55.2708, 'seed_arabian_ranches', 'manual_seed', 'arabian ranches,residential,villas', 74, 'active'),
+
+(157, NULL, 4, 'Dubai South', 'Dubai South, Dubai, UAE', 24.8876, 55.1614, 'seed_dubai_south', 'manual_seed', 'dubai south,residential,expo,airport', 78, 'active'),
+
+(158, NULL, 2, 'Al Maktoum International Airport', 'Dubai World Central, Dubai, UAE', 24.8964, 55.1614, 'seed_almaktoum_airport', 'manual_seed', 'al maktoum airport,dwc,dubai south,airport', 83, 'active'),
+
+(159, NULL, 13, 'Burj Khalifa/Dubai Mall Metro Station', 'Downtown Dubai, Dubai, UAE', 25.2013, 55.2694, 'seed_burj_khalifa_metro', 'manual_seed', 'burj khalifa metro,dubai mall metro,metro station', 88, 'active'),
+
+(160, NULL, 13, 'Mall of the Emirates Metro Station', 'Al Barsha, Dubai, UAE', 25.1200, 55.2000, 'seed_moe_metro', 'manual_seed', 'mall of emirates metro,metro station,al barsha', 82, 'active');
+
+-- Extra mobile search location: Ras Al Khaimah
+INSERT OR IGNORE INTO locations
+(location_id, area_id, category_id, name, address, latitude, longitude, external_place_id, provider_name, search_keywords, popularity_score, status)
+VALUES
+(161, 16, 4, 'Ras Al Khaimah City', 'Ras Al Khaimah, UAE', 25.8007, 55.9762, 'seed_ras_al_khaimah_city', 'seed', 'ras al khaimah,rak,city,uae,northern emirates', 78, 'active');
