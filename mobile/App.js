@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -256,9 +256,77 @@ function normalizeRouteResponse(data) {
     all_routes: routes,
   };
 }
+function getDistanceMeters(pointA, pointB) {
+  if (!pointA || !pointB) return Infinity;
+
+  const earthRadiusMeters = 6371000;
+  const lat1 = (pointA.latitude * Math.PI) / 180;
+  const lat2 = (pointB.latitude * Math.PI) / 180;
+  const deltaLat = ((pointB.latitude - pointA.latitude) * Math.PI) / 180;
+  const deltaLng = ((pointB.longitude - pointA.longitude) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1) *
+      Math.cos(lat2) *
+      Math.sin(deltaLng / 2) *
+      Math.sin(deltaLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadiusMeters * c;
+}
+
+function getRouteDistanceKm(coords, startIndex = 0) {
+  if (!coords || coords.length < 2) return 0;
+
+  let totalMeters = 0;
+
+  for (let index = startIndex; index < coords.length - 1; index += 1) {
+    totalMeters += getDistanceMeters(coords[index], coords[index + 1]);
+  }
+
+  return totalMeters / 1000;
+}
+
+function findClosestRoutePointIndex(currentLocation, coords) {
+  if (!currentLocation || !coords?.length) return 0;
+
+  let closestIndex = 0;
+  let closestDistance = Infinity;
+
+  coords.forEach((point, index) => {
+    const distance = getDistanceMeters(currentLocation, point);
+
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  });
+
+  return closestIndex;
+}
+
+function getStepCoordinate(step, index, coords) {
+  const directStepPoint = normalizeCoordinate(step);
+
+  if (directStepPoint) return directStepPoint;
+
+  if (coords?.[index]) return coords[index];
+
+  if (coords?.length) return coords[coords.length - 1];
+
+  return null;
+}
 
 export default function App() {
   const mapRef = useRef(null);
+  const locationWatcherRef = useRef(null);
+const currentStepIndexRef = useRef(0);
+const routeCoordinatesRef = useRef([]);
+const turnStepsRef = useRef([]);
+const selectedRouteRef = useRef(null);
+const sessionIdRef = useRef("");
 
   const [screen, setScreen] = useState("login");
   const [loading, setLoading] = useState(false);
@@ -287,7 +355,10 @@ export default function App() {
   const [sessionId, setSessionId] = useState("");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [tripSummary, setTripSummary] = useState(null);
-
+const [isTracking, setIsTracking] = useState(false);
+const [liveRemainingDistanceKm, setLiveRemainingDistanceKm] = useState(null);
+const [liveRemainingEtaMin, setLiveRemainingEtaMin] = useState(null);
+const [homeSheetExpanded, setHomeSheetExpanded] = useState(false);
   const selectedRoute = useMemo(() => {
     return (
       routes.find((route) => route.route_id === selectedRouteId) ||
@@ -299,16 +370,52 @@ export default function App() {
   const routeCoordinates = useMemo(() => getRouteCoordinates(selectedRoute), [selectedRoute]);
   const turnSteps = selectedRoute?.turn_by_turn_steps || [];
   const activeStep = turnSteps[currentStepIndex] || turnSteps[0];
+useEffect(() => {
+  currentStepIndexRef.current = currentStepIndex;
+}, [currentStepIndex]);
 
+useEffect(() => {
+  routeCoordinatesRef.current = routeCoordinates;
+}, [routeCoordinates]);
+
+useEffect(() => {
+  turnStepsRef.current = turnSteps;
+}, [turnSteps]);
+
+useEffect(() => {
+  selectedRouteRef.current = selectedRoute;
+}, [selectedRoute]);
+
+useEffect(() => {
+  sessionIdRef.current = sessionId;
+}, [sessionId]);
+
+useEffect(() => {
+  return () => {
+    if (locationWatcherRef.current) {
+      locationWatcherRef.current.remove();
+      locationWatcherRef.current = null;
+    }
+  };
+}, []);
   const progressPercent = turnSteps.length
     ? Math.round(((currentStepIndex + 1) / turnSteps.length) * 100)
     : sessionId
     ? 20
     : 0;
 
-  const remainingSteps = Math.max((turnSteps.length || 1) - currentStepIndex, 1);
-  const remainingEta = Math.max(Math.round((selectedRoute?.estimated_time_min || 25) * (1 - progressPercent / 100)), 1);
-  const remainingDistance = Math.max(((selectedRoute?.distance_km || 0) * (1 - progressPercent / 100)).toFixed(1), 0);
+  const fallbackRemainingEta = Math.max(
+  Math.round((selectedRoute?.estimated_time_min || 25) * (1 - progressPercent / 100)),
+  1
+);
+
+const fallbackRemainingDistance = Math.max(
+  ((selectedRoute?.distance_km || 0) * (1 - progressPercent / 100)).toFixed(1),
+  0
+);
+
+const displayRemainingEta = liveRemainingEtaMin || fallbackRemainingEta;
+const displayRemainingDistance = liveRemainingDistanceKm ?? fallbackRemainingDistance;
 
   async function apiRequest(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -391,7 +498,134 @@ export default function App() {
       setMapRegion({ ...nextLocation, latitudeDelta: 0.04, longitudeDelta: 0.04 });
     });
   }
+function updateNavigationProgressFromLocation(currentLocation) {
+  const coords = routeCoordinatesRef.current;
+  const steps = turnStepsRef.current;
+  const route = selectedRouteRef.current;
 
+  if (!currentLocation || !coords?.length) return;
+
+  const closestRouteIndex = findClosestRoutePointIndex(currentLocation, coords);
+  const remainingKm = getRouteDistanceKm(coords, closestRouteIndex);
+
+  const totalRouteKm =
+    Number(route?.distance_km) || getRouteDistanceKm(coords, 0) || 1;
+
+  const totalRouteEta = Number(route?.estimated_time_min) || 25;
+
+  const calculatedEta = Math.max(
+    Math.round((remainingKm / totalRouteKm) * totalRouteEta),
+    1
+  );
+
+  setLiveRemainingDistanceKm(Number(remainingKm.toFixed(1)));
+  setLiveRemainingEtaMin(calculatedEta);
+
+  const activeIndex = currentStepIndexRef.current;
+  const nextStep = steps[activeIndex + 1];
+
+  if (!nextStep) return;
+
+  const nextStepPoint = getStepCoordinate(nextStep, activeIndex + 1, coords);
+
+  if (!nextStepPoint) return;
+
+  const distanceToNextStep = getDistanceMeters(currentLocation, nextStepPoint);
+
+  if (distanceToNextStep <= 80 && activeIndex < steps.length - 1) {
+    const nextIndex = activeIndex + 1;
+
+    currentStepIndexRef.current = nextIndex;
+    setCurrentStepIndex(nextIndex);
+
+    const activeSession = sessionIdRef.current;
+
+    if (activeSession && !activeSession.startsWith("LOCAL-")) {
+      apiRequest("/api/trips/progress", {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: activeSession,
+          current_step_index: nextIndex,
+        }),
+      }).catch(() => {
+        // Do not stop navigation if backend progress update fails.
+      });
+    }
+  }
+}
+
+async function startLiveTracking() {
+  if (locationWatcherRef.current) {
+    locationWatcherRef.current.remove();
+    locationWatcherRef.current = null;
+  }
+
+  const permission = await Location.requestForegroundPermissionsAsync();
+
+  if (permission.status !== "granted") {
+    throw new Error("Location permission is required for real navigation.");
+  }
+
+  const current = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.High,
+  });
+
+  const currentLocation = {
+    latitude: current.coords.latitude,
+    longitude: current.coords.longitude,
+  };
+
+  setUserLocation(currentLocation);
+  updateNavigationProgressFromLocation(currentLocation);
+
+  mapRef.current?.animateCamera(
+    {
+      center: currentLocation,
+      zoom: 17,
+      pitch: 55,
+      heading: current.coords.heading || 0,
+    },
+    { duration: 800 }
+  );
+
+  locationWatcherRef.current = await Location.watchPositionAsync(
+    {
+      accuracy: Location.Accuracy.High,
+      timeInterval: 2000,
+      distanceInterval: 10,
+    },
+    (location) => {
+      const nextLocation = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+
+      setUserLocation(nextLocation);
+      updateNavigationProgressFromLocation(nextLocation);
+
+      mapRef.current?.animateCamera(
+        {
+          center: nextLocation,
+          zoom: 17,
+          pitch: 55,
+          heading: location.coords.heading || 0,
+        },
+        { duration: 700 }
+      );
+    }
+  );
+
+  setIsTracking(true);
+}
+
+function stopLiveTracking() {
+  if (locationWatcherRef.current) {
+    locationWatcherRef.current.remove();
+    locationWatcherRef.current = null;
+  }
+
+  setIsTracking(false);
+}
   async function recommendRoute() {
     await runAction(async () => {
       let data;
@@ -444,38 +678,55 @@ export default function App() {
   }
 
   async function startTrip() {
-    await runAction(async () => {
-      if (!selectedRoute) throw new Error("Select a route before starting navigation.");
+  await runAction(async () => {
+    if (!selectedRoute) {
+      throw new Error("Select a route before starting navigation.");
+    }
 
-      const body = {
-        trip_id: tripId,
-        selected_route_id: selectedRoute.route_id,
-        route_name: selectedRoute.route_name,
-        start_location: startLocation,
-        destination,
-        selected_route: selectedRoute,
-        route_steps: selectedRoute.turn_by_turn_steps,
-        current_step_index: 0,
-      };
+    const body = {
+      trip_id: tripId,
+      selected_route_id: selectedRoute.route_id,
+      route_name: selectedRoute.route_name,
+      start_location: startLocation,
+      destination,
+      selected_route: selectedRoute,
+      route_steps: selectedRoute.turn_by_turn_steps,
+      current_step_index: 0,
+    };
 
-      let data = null;
+    let data = null;
 
-      try {
-        data = await apiRequest("/api/trips/start", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-      } catch {
-        data = null;
-      }
+    try {
+      data = await apiRequest("/api/trips/start", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    } catch {
+      data = null;
+    }
 
-      setSessionId(String(data?.session_id || data?.session?.session_id || `LOCAL-${Date.now()}`));
-      setCurrentStepIndex(0);
-      setScreen("nav");
+    const nextSession = String(
+      data?.session_id || data?.session?.session_id || `LOCAL-${Date.now()}`
+    );
 
-      if (!data) setError("Backend trip start unavailable. Continuing with local in-app navigation.");
-    });
-  }
+    setSessionId(nextSession);
+    sessionIdRef.current = nextSession;
+
+    setCurrentStepIndex(0);
+    currentStepIndexRef.current = 0;
+
+    setLiveRemainingDistanceKm(selectedRoute.distance_km || null);
+    setLiveRemainingEtaMin(selectedRoute.estimated_time_min || null);
+
+    await startLiveTracking();
+
+    setScreen("nav");
+
+    if (!data) {
+      setError("Backend trip start unavailable. Real GPS navigation is still active.");
+    }
+  });
+}
 
   async function nextStep() {
     await runAction(async () => {
@@ -499,37 +750,47 @@ export default function App() {
   }
 
   async function endTrip() {
-    await runAction(async () => {
-      if (!sessionId) throw new Error("No active session.");
+  await runAction(async () => {
+    if (!sessionId) {
+      throw new Error("No active session.");
+    }
 
-      if (!sessionId.startsWith("LOCAL-")) {
-        try {
-          await apiRequest("/api/trips/end", {
-            method: "POST",
-            body: JSON.stringify({ session_id: sessionId, status: "completed" }),
-          });
-        } catch {
-          setError("Backend end trip failed. Showing local summary.");
-        }
+    stopLiveTracking();
+
+    if (!sessionId.startsWith("LOCAL-")) {
+      try {
+        await apiRequest("/api/trips/end", {
+          method: "POST",
+          body: JSON.stringify({
+            session_id: sessionId,
+            status: "completed",
+          }),
+        });
+      } catch {
+        setError("Backend end trip failed. Showing local summary.");
       }
+    }
 
-      setTripSummary({
-        status: "completed",
-        route_id: selectedRoute.route_id,
-        route_name: selectedRoute.route_name,
-        start_location: startLocation,
-        destination,
-        eta_text: selectedRoute.eta_text,
-        distance_text: selectedRoute.distance_text,
-        congestion_score: selectedRoute.congestion_score,
-        flowsync_score: selectedRoute.flowsync_score || selectedRoute.route_score,
-        progress: progressPercent,
-      });
-
-      setSessionId("");
-      setScreen("summary");
+    setTripSummary({
+      status: "completed",
+      route_id: selectedRoute.route_id,
+      route_name: selectedRoute.route_name,
+      start_location: startLocation,
+      destination,
+      eta_text: selectedRoute.eta_text,
+      distance_text: selectedRoute.distance_text,
+      congestion_score: selectedRoute.congestion_score,
+      flowsync_score: selectedRoute.flowsync_score || selectedRoute.route_score,
+      progress: progressPercent,
     });
-  }
+
+    setSessionId("");
+    sessionIdRef.current = "";
+    setLiveRemainingDistanceKm(null);
+    setLiveRemainingEtaMin(null);
+    setScreen("summary");
+  });
+}
 
   function openExternalNavigation() {
     const url =
@@ -547,42 +808,43 @@ export default function App() {
   }
 
   function renderHeader() {
-    if (screen === "login") return null;
-
-    return (
-      <View style={styles.headerCompact}>
-        <View>
-          <Text style={styles.logoSmall}>FlowSync</Text>
-          <Text style={styles.subtitleSmall}>Map-first smart navigation</Text>
-        </View>
-        <View style={styles.liveBadge}>
-          <Text style={styles.liveText}>LIVE API</Text>
-        </View>
-      </View>
-    );
-  }
+  return null;
+}
 
   function renderTabs() {
-    if (!token) return null;
+  if (!token || screen === "nav") return null;
 
-    const tabs = [
-      ["Home", "home"],
-      ["Routes", "routes"],
-      ["Nav", "nav"],
-      ["Ops", "operations"],
-      ["Me", "account"],
-    ];
+  const tabs = [
+    ["Explore", "home"],
+    ["Routes", "routes"],
+    ["Ops", "operations"],
+    ["Me", "account"],
+  ];
 
-    return (
-      <View style={styles.bottomTabs}>
-        {tabs.map(([label, value]) => (
-          <TouchableOpacity key={value} style={styles.bottomTab} onPress={() => setScreen(value)}>
-            <Text style={[styles.bottomTabText, screen === value ? styles.bottomTabTextActive : null]}>{label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  }
+  return (
+    <View style={styles.gmBottomTabs}>
+      {tabs.map(([label, value]) => (
+        <TouchableOpacity
+          key={value}
+          style={[
+            styles.gmBottomTab,
+            screen === value ? styles.gmBottomTabActive : null,
+          ]}
+          onPress={() => setScreen(value)}
+        >
+          <Text
+            style={[
+              styles.gmBottomTabText,
+              screen === value ? styles.gmBottomTabTextActive : null,
+            ]}
+          >
+            {label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
 
   function renderLogin() {
     return (
@@ -619,100 +881,207 @@ export default function App() {
     );
   }
 
-  function renderMap({ compact = false } = {}) {
-    const start = routeCoordinates[0];
-    const end = routeCoordinates[routeCoordinates.length - 1];
-    const vehiclePoint = routeCoordinates[Math.min(currentStepIndex, routeCoordinates.length - 1)] || start;
+  function renderMap({ navigation = false } = {}) {
+  const start = routeCoordinates[0];
+  const end = routeCoordinates[routeCoordinates.length - 1];
 
-    return (
-      <View style={[styles.mapCard, compact ? styles.mapCardCompact : null]}>
-        <MapView
-          ref={mapRef}
-          style={styles.map}
-          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
-          region={mapRegion}
-          onRegionChangeComplete={setMapRegion}
-          showsUserLocation
-          showsMyLocationButton={false}
-        >
-          {start && <Marker coordinate={start} title="Start" description={startLocation} />}
-          {end && <Marker coordinate={end} title="Destination" description={destination} />}
-          {userLocation && <Marker coordinate={userLocation} title="You" pinColor="blue" />}
-          {vehiclePoint && sessionId ? <Marker coordinate={vehiclePoint} title="FlowSync vehicle" pinColor="green" /> : null}
-          {routeCoordinates.length > 1 && <Polyline coordinates={routeCoordinates} strokeWidth={7} strokeColor="#22c55e" />}
-        </MapView>
+  const vehiclePoint =
+    routeCoordinates[Math.min(currentStepIndex, routeCoordinates.length - 1)] || start;
 
-        <View style={styles.mapSearchOverlay}>
-          <Text style={styles.overlaySmall}>Where to?</Text>
-          <Text style={styles.overlayTitle}>{startLocation} → {destination}</Text>
-        </View>
+  return (
+    <View style={styles.gmMapShell}>
+      <MapView
+        ref={mapRef}
+        style={styles.gmMap}
+        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+        region={mapRegion}
+        onRegionChangeComplete={setMapRegion}
+        showsUserLocation
+        showsMyLocationButton={false}
+      >
+        {start && (
+          <Marker coordinate={start} title="Start" description={startLocation} />
+        )}
 
-        <TouchableOpacity style={styles.locationFab} onPress={getMyLocation}>
-          <Text style={styles.fabText}>⌖</Text>
+        {end && (
+          <Marker coordinate={end} title="Destination" description={destination} />
+        )}
+
+        {userLocation && (
+          <Marker coordinate={userLocation} title="You" pinColor="blue" />
+        )}
+
+        {navigation && vehiclePoint && (
+          <Marker
+            coordinate={vehiclePoint}
+            title="FlowSync vehicle"
+            description={selectedRoute?.route_name}
+            pinColor="green"
+          />
+        )}
+
+        {routeCoordinates.length > 1 && (
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeWidth={navigation ? 9 : 7}
+            strokeColor={navigation ? "#00d9ff" : "#22c55e"}
+          />
+        )}
+      </MapView>
+
+      <View style={styles.gmMapButtons}>
+        <TouchableOpacity style={styles.gmCircleButton} onPress={getMyLocation}>
+          <Text style={styles.gmCircleButtonText}>⌖</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.gmCircleButton}>
+          <Text style={styles.gmCircleButtonText}>▣</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.gmCircleButton}>
+          <Text style={styles.gmCircleButtonText}>⚠</Text>
         </TouchableOpacity>
       </View>
-    );
-  }
+    </View>
+  );
+}
 
   function renderHome() {
-    return (
-      <View style={styles.screenContainer}>
-        <View style={styles.searchPanel}>
-          <Text style={styles.sectionKicker}>Plan smart route</Text>
-          <View style={styles.inputRow}>
-            <TextInput style={styles.routeInput} value={startLocation} onChangeText={setStartLocation} placeholder="Start" placeholderTextColor="#7890aa" />
-            <TouchableOpacity style={styles.swapButton} onPress={swapLocations}><Text style={styles.swapText}>⇅</Text></TouchableOpacity>
-            <TextInput style={styles.routeInput} value={destination} onChangeText={setDestination} placeholder="Destination" placeholderTextColor="#7890aa" />
+  return (
+    <View style={styles.gmScreen}>
+      {renderMap()}
+
+      <View style={styles.gmSearchCard}>
+        <View style={styles.gmSearchTop}>
+          <Text style={styles.gmSearchIcon}>⌕</Text>
+
+          <View style={styles.gmSearchInputs}>
+            <TextInput
+              style={styles.gmSearchInput}
+              value={startLocation}
+              onChangeText={setStartLocation}
+              placeholder="Start location"
+              placeholderTextColor="#9ca3af"
+            />
+
+            <View style={styles.gmDivider} />
+
+            <TextInput
+              style={styles.gmSearchInput}
+              value={destination}
+              onChangeText={setDestination}
+              placeholder="Where to?"
+              placeholderTextColor="#9ca3af"
+            />
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.preferenceScroll}>
-            {["balanced", "fastest", "lowest congestion", "shortest"].map((item) => (
-              <TouchableOpacity key={item} style={[styles.preferenceChip, routePreference === item ? styles.preferenceChipActive : null]} onPress={() => setRoutePreference(item)}>
-                <Text style={[styles.preferenceText, routePreference === item ? styles.preferenceTextActive : null]}>{item}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <TouchableOpacity style={styles.primaryButton} onPress={recommendRoute}>
-            <Text style={styles.primaryButtonText}>Find FlowSync Route</Text>
+          <TouchableOpacity style={styles.gmSwapButton} onPress={swapLocations}>
+            <Text style={styles.gmSwapText}>⇅</Text>
           </TouchableOpacity>
         </View>
 
-        {renderMap()}
+        <TouchableOpacity style={styles.gmFindButton} onPress={recommendRoute}>
+          <Text style={styles.gmFindButtonText}>Find FlowSync Route</Text>
+        </TouchableOpacity>
+      </View>
 
-        <View style={styles.routeSheet}>
-          <View style={styles.sheetTopRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.routeName}>{selectedRoute?.route_name}</Text>
-              <Text style={styles.muted}>{selectedRoute?.recommendation_reason || recommendationReason}</Text>
-            </View>
-            {selectedRoute?.route_id === recommendedRouteId ? <Text style={styles.recommendedPill}>Recommended</Text> : null}
-          </View>
-
-          <View style={styles.metricsRow}>
-            <Metric label="ETA" value={selectedRoute?.eta_text || "--"} />
-            <Metric label="Distance" value={selectedRoute?.distance_text || "--"} />
-            <Metric label="Traffic" value={String(selectedRoute?.congestion_score ?? "--")} />
-          </View>
-
-          <View style={styles.selectedBox}>
-            <Text style={styles.selectedText}>Selected Route: {selectedRoute?.route_id}</Text>
-            <Text style={styles.muted}>FlowSync Score: {selectedRoute?.flowsync_score || selectedRoute?.route_score}</Text>
-            <Text style={styles.muted}>Load: {selectedRoute?.assigned_users || 0}/{selectedRoute?.road_capacity || "--"} • {selectedRoute?.load_status || "balanced"}</Text>
-          </View>
-
-          <View style={styles.twoButtonRow}>
-            <TouchableOpacity style={styles.outlineButtonHalf} onPress={() => setScreen("routes")}>
-              <Text style={styles.outlineButtonText}>View Routes</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.gmChipRow}
+      >
+        {["Restaurants", "Parking", "Traffic", "Alerts", "Low congestion"].map(
+          (item) => (
+            <TouchableOpacity key={item} style={styles.gmChip}>
+              <Text style={styles.gmChipText}>{item}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButtonHalf} onPress={startTrip}>
-              <Text style={styles.primaryButtonText}>Start Nav</Text>
-            </TouchableOpacity>
+          )
+        )}
+      </ScrollView>
+
+      <View
+        style={[
+          styles.gmRouteSheet,
+          !homeSheetExpanded ? styles.gmRouteSheetCollapsed : null,
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.gmSheetHandleButton}
+          onPress={() => setHomeSheetExpanded((current) => !current)}
+        >
+          <View style={styles.gmHandle} />
+        </TouchableOpacity>
+
+        <View style={styles.gmSheetHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.gmRouteTitle} numberOfLines={homeSheetExpanded ? 3 : 1}>
+              {selectedRoute?.route_name || "FlowSync Route"}
+            </Text>
+
+            <Text style={styles.gmRouteSub}>
+              {startLocation} → {destination}
+            </Text>
+          </View>
+
+          {selectedRoute?.route_id === recommendedRouteId ? (
+            <Text style={styles.gmRecommended}>Recommended</Text>
+          ) : (
+            <Text style={styles.gmSelected}>Selected</Text>
+          )}
+        </View>
+
+        <View style={styles.gmMetrics}>
+          <View style={styles.gmMetricBox}>
+            <Text style={styles.gmMetricValue}>{selectedRoute?.eta_text || "--"}</Text>
+            <Text style={styles.gmMetricLabel}>ETA</Text>
+          </View>
+
+          <View style={styles.gmMetricBox}>
+            <Text style={styles.gmMetricValue}>{selectedRoute?.distance_text || "--"}</Text>
+            <Text style={styles.gmMetricLabel}>Distance</Text>
+          </View>
+
+          <View style={styles.gmMetricBox}>
+            <Text style={styles.gmMetricValue}>
+              {selectedRoute?.congestion_score ?? "--"}
+            </Text>
+            <Text style={styles.gmMetricLabel}>Traffic</Text>
           </View>
         </View>
+
+        {homeSheetExpanded ? (
+          <View style={styles.gmFlowBox}>
+            <Text style={styles.gmFlowTitle}>Why FlowSync chose this</Text>
+            <Text style={styles.gmFlowText}>
+              {selectedRoute?.recommendation_reason || recommendationReason}
+            </Text>
+            <Text style={styles.gmFlowSmall}>
+              Selected Route: {selectedRoute?.route_id} • Score:{" "}
+              {selectedRoute?.flowsync_score || selectedRoute?.route_score}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.gmCollapsedHint}>
+            Tap handle to expand route details
+          </Text>
+        )}
+
+        <View style={styles.gmActionRow}>
+          <TouchableOpacity
+            style={styles.gmSecondaryButton}
+            onPress={() => setScreen("routes")}
+          >
+            <Text style={styles.gmSecondaryButtonText}>Routes</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.gmPrimaryButton} onPress={startTrip}>
+            <Text style={styles.gmPrimaryButtonText}>Start</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    );
-  }
+    </View>
+  );
+}
 
   function renderRoutes() {
     return (
@@ -751,57 +1120,80 @@ export default function App() {
   }
 
   function renderNavigation() {
-    return (
-      <View style={styles.screenContainer}>
-        <View style={styles.nextTurnCard}>
-          <Text style={styles.nextTurnLabel}>Next instruction</Text>
-          <Text style={styles.nextTurnText}>{activeStep?.instruction || "Continue on selected route."}</Text>
-          <Text style={styles.muted}>Step {Math.min(currentStepIndex + 1, Math.max(turnSteps.length, 1))} of {Math.max(turnSteps.length, 1)}</Text>
+  return (
+    <View style={styles.gmScreen}>
+      {renderMap({ navigation: true })}
+
+      <View style={styles.gmNavInstruction}>
+        <View style={styles.gmArrowBox}>
+          <Text style={styles.gmArrowText}>↑</Text>
         </View>
 
-        {renderMap({ compact: true })}
-
-        <View style={styles.navSheet}>
-          <View style={styles.metricsRow}>
-            <Metric label="Remaining" value={`${remainingEta}m`} />
-            <Metric label="Distance" value={`${remainingDistance}km`} />
-            <Metric label="Progress" value={`${progressPercent}%`} />
-          </View>
-
-          <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progressPercent}%` }]} /></View>
-
-          {selectedRoute?.alerts?.[0] ? (
-            <View style={styles.alertBox}>
-              <Text style={styles.alertTitle}>Traffic alert</Text>
-              <Text style={styles.muted}>{selectedRoute.alerts[0].title}</Text>
-            </View>
-          ) : null}
-
-          <TouchableOpacity style={styles.primaryButton} onPress={nextStep}>
-            <Text style={styles.primaryButtonText}>Next Step</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.outlineButton} onPress={openExternalNavigation}>
-            <Text style={styles.outlineButtonText}>Open Real Navigation App</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.dangerButton} onPress={endTrip}>
-            <Text style={styles.dangerButtonText}>End Trip</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.title}>Turn-by-turn</Text>
-          {turnSteps.map((step, index) => (
-            <View key={`${index}`} style={[styles.stepRow, index === currentStepIndex ? styles.activeStep : null]}>
-              <Text style={styles.stepCircle}>{index + 1}</Text>
-              <Text style={styles.stepText}>{step.instruction || step.text}</Text>
-            </View>
-          ))}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.gmNavTitle}>
+            {activeStep?.instruction || "Continue on selected route"}
+          </Text>
+          <Text style={styles.gmNavSub}>
+            Then follow FlowSync guidance • Step{" "}
+            {Math.min(currentStepIndex + 1, Math.max(turnSteps.length, 1))} of{" "}
+            {Math.max(turnSteps.length, 1)}
+          </Text>
         </View>
       </View>
-    );
-  }
+
+      <View style={styles.gmNavFloating}>
+        <TouchableOpacity style={styles.gmCircleButton}>
+          <Text style={styles.gmCircleButtonText}>🔍</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.gmCircleButton}>
+          <Text style={styles.gmCircleButtonText}>🔇</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.gmReportButton}>
+          <Text style={styles.gmReportText}>⚠ Report</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.gmNavSheet}>
+        <View style={styles.gmHandle} />
+
+        <View style={styles.gmNavMetrics}>
+          <View>
+            <Text style={styles.gmNavEta}>{displayRemainingEta} min</Text>
+<Text style={styles.gmRouteSub}>
+  {displayRemainingDistance} km • {selectedRoute?.traffic_display || "Live traffic"}
+</Text>
+          </View>
+
+          <TouchableOpacity style={styles.gmEndIconButton} onPress={endTrip}>
+            <Text style={styles.gmEndIconText}>×</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.gmProgressTrack}>
+          <View style={[styles.gmProgressFill, { width: `${progressPercent}%` }]} />
+        </View>
+
+        <View style={styles.gmLiveTrackingBox}>
+  <Text style={styles.gmLiveTrackingText}>
+    {isTracking
+      ? "Real GPS tracking active. Instructions update from phone location."
+      : "GPS tracking not active."}
+  </Text>
+</View>
+
+<TouchableOpacity style={styles.gmPrimaryButton} onPress={openExternalNavigation}>
+  <Text style={styles.gmPrimaryButtonText}>Open Maps</Text>
+</TouchableOpacity>
+
+        <TouchableOpacity style={styles.gmDangerWide} onPress={endTrip}>
+          <Text style={styles.gmDangerText}>End Trip</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
   function renderOperations() {
     return (
@@ -1016,9 +1408,423 @@ const styles = StyleSheet.create({
   bottomTab: { flex: 1, alignItems: "center", paddingVertical: 10 },
   bottomTabText: { color: "#9fb4c8", fontWeight: "900", fontSize: 12 },
   bottomTabTextActive: { color: "#22c55e" },
+    gmScreen: {
+    flex: 1,
+    position: "relative",
+    backgroundColor: "#06111f",
+  },
+  gmMapShell: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#06111f",
+  },
+  gmMap: {
+    flex: 1,
+  },
+  gmSearchCard: {
+    position: "absolute",
+    top: 14,
+    left: 16,
+    right: 16,
+    backgroundColor: "rgba(20,20,20,0.94)",
+    borderRadius: 28,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  gmSearchTop: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  gmSearchIcon: {
+    color: "#22c55e",
+    fontSize: 24,
+    fontWeight: "900",
+    marginRight: 10,
+  },
+  gmSearchInputs: {
+    flex: 1,
+  },
+  gmSearchInput: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "700",
+    paddingVertical: 5,
+  },
+  gmDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginVertical: 4,
+  },
+  gmSwapButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#2b2b2b",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
+  },
+  gmSwapText: {
+    color: "#7dd3fc",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  gmFindButton: {
+    backgroundColor: "#22c55e",
+    paddingVertical: 12,
+    borderRadius: 20,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  gmFindButtonText: {
+    color: "#03120a",
+    fontWeight: "900",
+    fontSize: 15,
+  },
+  gmChipRow: {
+    position: "absolute",
+    top: 160,
+    left: 16,
+    right: 0,
+  },
+  gmChip: {
+    backgroundColor: "rgba(35,35,35,0.95)",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  gmChipText: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  gmMapButtons: {
+    position: "absolute",
+    right: 16,
+    top: 230,
+    gap: 12,
+  },
+  gmCircleButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 6,
+  },
+  gmCircleButtonText: {
+    color: "#172033",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  gmRouteSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 72,
+    backgroundColor: "rgba(18,18,18,0.97)",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 18,
+    paddingBottom: 20,
+  },
+  gmHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.28)",
+    marginBottom: 14,
+  },
+  gmSheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  gmRouteTitle: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 30,
+  },
+  gmRouteSub: {
+    color: "#b8c2d4",
+    fontSize: 14,
+    marginTop: 4,
+  },
+  gmRecommended: {
+    color: "#03120a",
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+  },
+  gmSelected: {
+    color: "#03120a",
+    backgroundColor: "#7dd3fc",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+  },
+  gmMetrics: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+  },
+  gmMetricBox: {
+    flex: 1,
+    backgroundColor: "#202124",
+    borderRadius: 18,
+    padding: 12,
+    alignItems: "center",
+  },
+  gmMetricValue: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  gmMetricLabel: {
+    color: "#a8b3c4",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  gmFlowBox: {
+    backgroundColor: "#0b1626",
+    borderColor: "#1f334f",
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    marginTop: 14,
+  },
+  gmFlowTitle: {
+    color: "#86efac",
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  gmFlowText: {
+    color: "#dbeafe",
+    lineHeight: 20,
+  },
+  gmFlowSmall: {
+    color: "#9fb4c8",
+    fontSize: 12,
+    marginTop: 6,
+  },
+  gmActionRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 14,
+  },
+  gmSecondaryButton: {
+    flex: 1,
+    borderColor: "#38bdf8",
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+  gmSecondaryButtonText: {
+    color: "#7dd3fc",
+    fontWeight: "900",
+  },
+  gmPrimaryButton: {
+    flex: 1,
+    backgroundColor: "#22c55e",
+    borderRadius: 22,
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+  gmPrimaryButtonText: {
+    color: "#03120a",
+    fontWeight: "900",
+  },
+  gmBottomTabs: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 74,
+    flexDirection: "row",
+    backgroundColor: "rgba(18,18,18,0.98)",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+  },
+  gmBottomTab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gmBottomTabActive: {
+    backgroundColor: "rgba(34,197,94,0.14)",
+    borderRadius: 18,
+  },
+  gmBottomTabText: {
+    color: "#9ca3af",
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  gmBottomTabTextActive: {
+    color: "#22c55e",
+  },
+  gmNavInstruction: {
+    position: "absolute",
+    top: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: "#006d6b",
+    borderRadius: 24,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  gmArrowBox: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gmArrowText: {
+    color: "#ffffff",
+    fontSize: 42,
+    fontWeight: "900",
+  },
+  gmNavTitle: {
+    color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "900",
+    lineHeight: 27,
+  },
+  gmNavSub: {
+    color: "#d1fae5",
+    marginTop: 5,
+    fontSize: 13,
+  },
+  gmNavFloating: {
+    position: "absolute",
+    right: 16,
+    top: 255,
+    alignItems: "flex-end",
+    gap: 12,
+  },
+  gmReportButton: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    paddingHorizontal: 18,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gmReportText: {
+    color: "#172033",
+    fontWeight: "900",
+  },
+  gmNavSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 18,
+    paddingBottom: 24,
+  },
+  gmNavMetrics: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  gmNavEta: {
+    color: "#dc2626",
+    fontSize: 32,
+    fontWeight: "900",
+  },
+  gmEndIconButton: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2,
+    borderColor: "#9ca3af",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gmEndIconText: {
+    color: "#111827",
+    fontSize: 34,
+    fontWeight: "800",
+  },
+  gmProgressTrack: {
+    height: 10,
+    backgroundColor: "#e5e7eb",
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 14,
+  },
+  gmProgressFill: {
+    height: 10,
+    backgroundColor: "#22c55e",
+    borderRadius: 999,
+  },
+  gmDangerWide: {
+    backgroundColor: "#ef4444",
+    borderRadius: 22,
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  gmDangerText: {
+    color: "#2b0505",
+    fontWeight: "900",
+  },
   loadingOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(6,17,31,0.65)" },
   errorToast: { position: "absolute", left: 16, right: 16, bottom: 88, backgroundColor: "#3f1212", borderColor: "#ef4444", borderWidth: 1, borderRadius: 16, padding: 14 },
     errorText: {
     color: "#fecaca",
+  },
+    gmRouteSheetCollapsed: {
+    maxHeight: 345,
+  },
+  gmSheetHandleButton: {
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  gmCollapsedHint: {
+    color: "#9fb4c8",
+    fontSize: 12,
+    marginTop: 10,
+    textAlign: "center",
+  },
+  gmLiveTrackingBox: {
+    backgroundColor: "#ecfeff",
+    borderColor: "#06b6d4",
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    marginTop: 14,
+  },
+  gmLiveTrackingText: {
+    color: "#0f172a",
+    fontWeight: "800",
+    lineHeight: 20,
   },
 });
