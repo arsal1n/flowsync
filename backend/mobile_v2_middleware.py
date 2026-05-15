@@ -490,6 +490,7 @@ async def handle_start(request: Request) -> JSONResponse:
 
     return JSONResponse(
         {
+            "found": True,
             "session": session_response,
             "navigation_session": session_response,
             "session_id": session_id,
@@ -549,6 +550,7 @@ async def handle_session_detail(request: Request) -> JSONResponse:
 
     return JSONResponse(
         {
+            "found": True,
             "session": session_response,
             "navigation_session": session_response,
             "session_id": session_id,
@@ -740,4 +742,6 @@ def register_mobile_v2_middleware(app):
             )
 
         return await call_next(request)
+
+
 

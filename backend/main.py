@@ -739,3 +739,105 @@ async def mobile_v2_live_navigation_bridge(request, call_next):
         return await mobile_v2_live_handle_session_detail(request)
 
     return await call_next(request)
+
+# --- FlowSync FINAL mobile v2 summary intercept ---
+# Fixes GET /api/trips/{request_id}/summary for mobile v2 string request IDs
+# before the older integer-only FastAPI route can return 422.
+
+from fastapi.responses import JSONResponse as _MobileV2SummaryJSONResponse
+
+from mobile_v2_middleware import (
+    SESSION_CACHE as _MOBILE_V2_SESSION_CACHE,
+    TRIP_CACHE as _MOBILE_V2_TRIP_CACHE,
+    find_route as _mobile_v2_find_route,
+    number as _mobile_v2_number,
+)
+
+
+@app.middleware("http")
+async def mobile_v2_final_summary_intercept(request, call_next):
+    path = request.url.path
+    method = request.method.upper()
+
+    if method == "GET" and path.startswith("/api/trips/") and path.endswith("/summary"):
+        request_id = path.rstrip("/").split("/")[-2]
+
+        matched_session = None
+
+        for session in _MOBILE_V2_SESSION_CACHE.values():
+            if str(session.get("request_id")) == str(request_id) or str(session.get("trip_id")) == str(request_id):
+                matched_session = session
+                break
+
+        if matched_session:
+            route = matched_session.get("route") or {}
+
+            distance_km = round(_mobile_v2_number(route.get("distance_km"), 0), 1)
+            duration_min = int(_mobile_v2_number(route.get("estimated_time_min"), 0) + 3)
+            fuel_saved_liters = round(max(0.2, distance_km * 0.05), 2)
+            co2_saved_kg = round(fuel_saved_liters * 2.31, 2)
+            congestion_reduction = int(max(5, 30 - _mobile_v2_number(route.get("congestion_score"), 5) * 3))
+
+            return _MobileV2SummaryJSONResponse(
+                {
+                    "found": True,
+                    "request_id": matched_session.get("request_id"),
+                    "trip_id": matched_session.get("trip_id"),
+                    "session_id": matched_session.get("session_id"),
+                    "selected_route_id": matched_session.get("selected_route_id"),
+                    "status": matched_session.get("status", "completed"),
+                    "route_id": matched_session.get("selected_route_id"),
+                    "route_name": route.get("route_name"),
+                    "distance_km": distance_km,
+                    "duration_min": duration_min,
+                    "estimated_time_min": route.get("estimated_time_min", 0),
+                    "fuel_saved_liters": fuel_saved_liters,
+                    "co2_saved_kg": co2_saved_kg,
+                    "congestion_reduction": congestion_reduction,
+                    "traffic_display": route.get("traffic_display"),
+                    "summary_message": "Trip summary generated successfully using the selected FlowSync route.",
+                }
+            )
+
+        trip = _MOBILE_V2_TRIP_CACHE.get(str(request_id))
+
+        if trip:
+            route = _mobile_v2_find_route(
+                trip.get("all_routes") or [],
+                trip.get("recommended_route_id"),
+            )
+
+            distance_km = round(_mobile_v2_number(route.get("distance_km"), 0), 1)
+            fuel_saved_liters = round(max(0.2, distance_km * 0.05), 2)
+            co2_saved_kg = round(fuel_saved_liters * 2.31, 2)
+
+            return _MobileV2SummaryJSONResponse(
+                {
+                    "found": True,
+                    "request_id": request_id,
+                    "trip_id": trip.get("trip_id"),
+                    "selected_route_id": route.get("route_id"),
+                    "status": "summary_available",
+                    "route_id": route.get("route_id"),
+                    "route_name": route.get("route_name"),
+                    "distance_km": distance_km,
+                    "duration_min": route.get("estimated_time_min", 0),
+                    "estimated_time_min": route.get("estimated_time_min", 0),
+                    "fuel_saved_liters": fuel_saved_liters,
+                    "co2_saved_kg": co2_saved_kg,
+                    "congestion_reduction": int(max(5, 30 - _mobile_v2_number(route.get("congestion_score"), 5) * 3)),
+                    "traffic_display": route.get("traffic_display"),
+                    "summary_message": "Trip summary generated from mobile v2 trip cache.",
+                }
+            )
+
+        return _MobileV2SummaryJSONResponse(
+            {
+                "found": False,
+                "request_id": request_id,
+                "status": "summary_not_found",
+                "summary_message": "No mobile v2 summary was found, but endpoint contract is valid.",
+            }
+        )
+
+    return await call_next(request)
