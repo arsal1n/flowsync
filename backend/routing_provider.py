@@ -754,3 +754,88 @@ def get_provider_route_options(start_location: str, destination: str):
 
 def get_route_catalog():
     return get_mock_route_options("Dubai Mall", "Dubai Marina")
+
+# --- FlowSync final best-route ranking override ---
+# Ensures the backend recommends the actual best route, not always Route A.
+
+def _flowsync_route_number(value):
+    try:
+        return float(value)
+    except Exception:
+        return 0.0
+
+
+def _flowsync_best_route_score(route):
+    estimated_time = _flowsync_route_number(
+        route.get("estimated_time") or route.get("duration_min")
+    )
+    distance_km = _flowsync_route_number(route.get("distance_km"))
+    traffic_score = _flowsync_route_number(
+        route.get("traffic_score") or route.get("congestion_score")
+    )
+    toll_cost = _flowsync_route_number(route.get("toll_cost"))
+    eco_score = _flowsync_route_number(route.get("eco_score"))
+
+    # Lower score = better route.
+    # This makes Route D win when it has lower time + lower traffic.
+    return round(
+        (estimated_time * 0.45)
+        + (traffic_score * 3.2)
+        + (distance_km * 0.22)
+        + (toll_cost * 0.35)
+        - (eco_score * 0.9),
+        2,
+    )
+
+
+def _flowsync_rank_routes(routes):
+    ranked = []
+
+    for route in routes:
+        next_route = dict(route)
+        score = _flowsync_best_route_score(next_route)
+
+        next_route["route_score"] = score
+        next_route["recommendation_score"] = score
+        next_route["is_recommended"] = False
+        next_route["recommendation_reason"] = (
+            "Balanced recommendation based on ETA, traffic, distance, tolls, and eco score."
+        )
+
+        ranked.append(next_route)
+
+    ranked.sort(key=lambda item: item.get("route_score", 999999))
+
+    for index, route in enumerate(ranked):
+        route["rank"] = index + 1
+        route["is_recommended"] = index == 0
+
+        if index == 0:
+            route["recommendation_reason"] = (
+                "Best overall route: lowest combined ETA, traffic pressure, distance, toll, and eco impact."
+            )
+
+    return ranked
+
+
+_previous_get_provider_route_options = get_provider_route_options
+
+
+def get_provider_route_options(start_location: str, destination: str):
+    result = _previous_get_provider_route_options(start_location, destination)
+
+    routes = result.get("routes", [])
+
+    if not routes:
+        return result
+
+    ranked_routes = _flowsync_rank_routes(routes)
+
+    result["routes"] = ranked_routes
+    result["recommended_route"] = ranked_routes[0]
+    result["provider_status"] = "in_app_navigation_best_route_ranked"
+    result["best_route_strategy"] = "eta_traffic_distance_toll_eco"
+    result["external_navigation_required"] = False
+    result["in_app_navigation"] = True
+
+    return result
