@@ -196,6 +196,60 @@ function getRouteDestination(route, fallback) {
   return route?.destination || fallback || "Destination";
 }
 
+
+function getMobileRouteScore(route) {
+  const estimatedTime = Number(route?.estimated_time || route?.duration_min || 0);
+  const distanceKm = Number(route?.distance_km || 0);
+  const trafficScore = Number(route?.traffic_score ?? route?.congestion_score ?? 0);
+  const tollCost = Number(route?.toll_cost || 0);
+  const ecoScore = Number(route?.eco_score || 0);
+
+  return (
+    estimatedTime * 0.45 +
+    trafficScore * 3.2 +
+    distanceKm * 0.22 +
+    tollCost * 0.35 -
+    ecoScore * 0.9
+  );
+}
+
+function sortRoutesBestFirst(routes) {
+  return [...routes].sort((a, b) => {
+    const aRecommended = a?.is_recommended ? -1000 : 0;
+    const bRecommended = b?.is_recommended ? -1000 : 0;
+
+    return getMobileRouteScore(a) + aRecommended - (getMobileRouteScore(b) + bRecommended);
+  });
+}
+
+function getVehicleCoordinate(coords, progressPercent) {
+  if (!coords || coords.length === 0) return null;
+
+  const safeProgress = Math.max(0, Math.min(100, progressPercent || 0));
+  const index = Math.min(
+    coords.length - 1,
+    Math.floor((safeProgress / 100) * (coords.length - 1))
+  );
+
+  return coords[index];
+}
+
+function getRemainingStats(route, progressPercent) {
+  const totalMinutes = Number(route?.estimated_time || route?.duration_min || 0);
+  const totalDistance = Number(route?.distance_km || 0);
+  const remainingRatio = Math.max(0, 1 - (progressPercent || 0) / 100);
+
+  const remainingMinutes = Math.max(0, Math.ceil(totalMinutes * remainingRatio));
+  const remainingDistance = Math.max(0, Number((totalDistance * remainingRatio).toFixed(1)));
+
+  return {
+    remainingMinutes,
+    remainingDistance,
+    etaText: remainingMinutes <= 0 ? "Arriving now" : `${remainingMinutes} min remaining`,
+    distanceText: remainingDistance <= 0 ? "0 km remaining" : `${remainingDistance} km remaining`,
+  };
+}
+
 export default function App() {
   const mapRef = useRef(null);
 
@@ -232,7 +286,9 @@ export default function App() {
       routeResult?.data?.all_routes ||
       [];
 
-    if (Array.isArray(all) && all.length > 0) return all;
+    if (Array.isArray(all) && all.length > 0) {
+      return sortRoutesBestFirst(all);
+    }
 
     const recommended =
       routeResult?.recommended_route ||
@@ -264,6 +320,9 @@ export default function App() {
       : sessionId
       ? 20
       : 0;
+
+  const vehicleCoordinate = getVehicleCoordinate(coords, progressPercent);
+  const remainingStats = getRemainingStats(selectedRoute, progressPercent);
 
   async function apiRequest(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -404,6 +463,24 @@ export default function App() {
       });
 
       setRouteResult(data);
+
+      const rawRoutes =
+        data.all_routes ||
+        data.routes ||
+        data.data?.all_routes ||
+        [];
+
+      const sortedRoutes = Array.isArray(rawRoutes) && rawRoutes.length > 0
+        ? sortRoutesBestFirst(rawRoutes)
+        : [];
+
+      const bestRoute =
+        sortedRoutes[0] ||
+        data.recommended_route ||
+        data.routes?.[0] ||
+        data.all_routes?.[0] ||
+        data.data?.recommended_route;
+
       setSelectedRouteIndex(0);
 
       const req =
@@ -413,13 +490,7 @@ export default function App() {
 
       if (req) setRequestId(String(req));
 
-      const firstRoute =
-        data.recommended_route ||
-        data.routes?.[0] ||
-        data.all_routes?.[0] ||
-        data.data?.recommended_route;
-
-      const nextCoords = routeCoordinates(firstRoute);
+      const nextCoords = routeCoordinates(bestRoute);
       setMapRegion(regionFromCoordinates(nextCoords));
       setScreen("map");
     });
@@ -845,6 +916,15 @@ export default function App() {
             <Marker coordinate={userLocation} title="You" pinColor="blue" />
           )}
 
+          {vehicleCoordinate && sessionId && (
+            <Marker
+              coordinate={vehicleCoordinate}
+              title="FlowSync Vehicle"
+              description={remainingStats.etaText}
+              pinColor="green"
+            />
+          )}
+
           {coords.length > 1 && (
             <Polyline coordinates={coords} strokeWidth={6} strokeColor="#22c55e" />
           )}
@@ -949,6 +1029,12 @@ export default function App() {
           </View>
 
           <Text style={styles.muted}>{progressPercent}% route progress</Text>
+          <Text style={styles.trafficBig}>{remainingStats.etaText}</Text>
+          <Text style={styles.muted}>{remainingStats.distanceText}</Text>
+          <Text style={styles.muted}>{getTrafficDisplay(selectedRoute)}</Text>
+          <Text style={styles.trafficBig}>{remainingStats.etaText}</Text>
+          <Text style={styles.muted}>{remainingStats.distanceText}</Text>
+          <Text style={styles.muted}>{getTrafficDisplay(selectedRoute)}</Text>
         </View>
 
         <View style={styles.card}>
@@ -1611,3 +1697,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+
+
+
+
