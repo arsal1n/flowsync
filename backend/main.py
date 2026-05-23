@@ -1045,3 +1045,10 @@ async def flowsync_clean_provider_route_errors(request, call_next):
         )
 
     return _flowsync_clean_provider_clone_response(response, response_body)
+
+# --- FlowSync Geoapify place search middleware ---
+# Improves random UAE place/street/POI search before ORS routing.
+
+from geoapify_places_middleware import register_geoapify_places_middleware
+
+register_geoapify_places_middleware(app)
