@@ -763,7 +763,7 @@ SET route_public_id =
         WHEN 4 THEN 'ROUTE-A-AIRPORT'
         WHEN 5 THEN 'ROUTE-B-AIRPORT'
         WHEN 6 THEN 'ROUTE-A-SHARJAH'
-        WHEN 7 THEN 'ROUTE-D'
+        WHEN 7 THEN 'ROUTE-B-SHARJAH'
         ELSE 'ROUTE-' || route_id
     END;
 
@@ -1057,3 +1057,49 @@ VALUES
 (4, 2, 3, 'upvote'),
 (5, 2, 5, 'upvote'),
 (6, 3, 5, 'upvote');
+-- =========================================================
+-- FINAL DATABASE HARDENING SEED FOR REAL MAPS/NAVIGATION
+-- =========================================================
+
+-- Fill user report severity/dismissed fields
+UPDATE user_reports
+SET severity = COALESCE(severity, 'medium'),
+    dismissed_count = COALESCE(dismissed_count, 0);
+
+-- Store demo trip summary for selected Route D session
+UPDATE trip_sessions
+SET
+    total_distance_km = 30.4,
+    total_time_min = 31,
+    summary_congestion_score = 3,
+    summary_flowsync_score = 24.7,
+    fuel_saved_estimate = 0.9,
+    co2_saved_estimate = 2.1
+WHERE session_id = 8;
+
+-- Parking final demo values
+UPDATE parking_zones
+SET
+    capacity = COALESCE(capacity, total_spaces),
+    price_per_hour = COALESCE(price_per_hour, 4.0),
+    updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP);
+
+-- Backfill selected route public IDs for all demo sessions
+UPDATE trip_sessions
+SET selected_route_public_id = (
+    SELECT route_options.route_public_id
+    FROM route_options
+    WHERE route_options.route_id = trip_sessions.selected_route_id
+)
+WHERE selected_route_public_id IS NULL
+  AND selected_route_id IS NOT NULL;
+  -- Final trip summary values for selected Route D session
+UPDATE trip_sessions
+SET
+    total_distance_km = 30.4,
+    total_time_min = 31,
+    summary_congestion_score = 3,
+    summary_flowsync_score = 24.7,
+    fuel_saved_estimate = 0.9,
+    co2_saved_estimate = 2.1
+WHERE session_id = 8;

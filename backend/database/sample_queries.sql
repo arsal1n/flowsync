@@ -235,3 +235,70 @@ SELECT
     recorded_at
 FROM navigation_progress
 WHERE session_id = 8;
+-- =========================================================
+-- FINAL DATABASE PROOF QUERIES
+-- =========================================================
+
+-- Route coordinate count per route
+SELECT
+    route_options.route_id,
+    route_options.route_public_id,
+    route_options.route_name,
+    COUNT(route_coordinates.route_coordinate_id) AS coordinate_points
+FROM route_options
+LEFT JOIN route_coordinates ON route_options.route_id = route_coordinates.route_id
+GROUP BY route_options.route_id, route_options.route_public_id, route_options.route_name
+ORDER BY coordinate_points DESC;
+
+-- Route steps count per route
+SELECT
+    route_options.route_id,
+    route_options.route_public_id,
+    route_options.route_name,
+    COUNT(route_steps.route_step_id) AS step_count
+FROM route_options
+LEFT JOIN route_steps ON route_options.route_id = route_steps.route_id
+GROUP BY route_options.route_id, route_options.route_public_id, route_options.route_name
+ORDER BY step_count DESC;
+
+-- Selected Route D session linked to actual route option
+SELECT
+    trip_sessions.session_id,
+    trip_sessions.selected_route_id,
+    trip_sessions.selected_route_public_id,
+    route_options.route_name,
+    route_options.route_public_id,
+    route_options.eta_text,
+    route_options.distance_text
+FROM trip_sessions
+JOIN route_options ON trip_sessions.selected_route_id = route_options.route_id
+WHERE trip_sessions.session_id = 8;
+
+-- Trip summary saved in DB
+SELECT
+    session_id,
+    selected_route_id,
+    selected_route_public_id,
+    status,
+    total_distance_km,
+    total_time_min,
+    summary_congestion_score,
+    summary_flowsync_score,
+    fuel_saved_estimate,
+    co2_saved_estimate
+FROM trip_sessions
+WHERE session_id = 8;
+
+-- User reports with confirmations
+SELECT
+    report_type,
+    description,
+    latitude,
+    longitude,
+    severity,
+    status,
+    confirmation_count,
+    dismissed_count,
+    expires_at
+FROM user_reports
+ORDER BY confirmation_count DESC;

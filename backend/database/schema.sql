@@ -1186,3 +1186,42 @@ CREATE INDEX IF NOT EXISTS idx_user_reports_status ON user_reports(status);
 CREATE INDEX IF NOT EXISTS idx_user_reports_location ON user_reports(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_user_reports_route_id ON user_reports(route_id);
 CREATE INDEX IF NOT EXISTS idx_user_report_confirmations_report_id ON user_report_confirmations(report_id);
+-- =========================================================
+-- FINAL DATABASE HARDENING FOR REAL MAPS/NAVIGATION
+-- =========================================================
+
+-- User reports extra fields for Waze-style reporting
+ALTER TABLE user_reports ADD COLUMN severity TEXT DEFAULT 'medium';
+ALTER TABLE user_reports ADD COLUMN dismissed_count INTEGER DEFAULT 0;
+
+-- Trip summary fields so summary is stored in DB, not only frontend state
+ALTER TABLE trip_sessions ADD COLUMN total_distance_km REAL;
+ALTER TABLE trip_sessions ADD COLUMN total_time_min REAL;
+ALTER TABLE trip_sessions ADD COLUMN summary_congestion_score REAL;
+ALTER TABLE trip_sessions ADD COLUMN summary_flowsync_score REAL;
+ALTER TABLE trip_sessions ADD COLUMN fuel_saved_estimate REAL;
+ALTER TABLE trip_sessions ADD COLUMN co2_saved_estimate REAL;
+
+-- Parking final demo support
+ALTER TABLE parking_zones ADD COLUMN capacity INTEGER;
+ALTER TABLE parking_zones ADD COLUMN price_per_hour REAL;
+
+
+-- Important indexes for backend/mobile performance
+CREATE INDEX IF NOT EXISTS idx_locations_name ON locations(name);
+CREATE INDEX IF NOT EXISTS idx_locations_search_keywords ON locations(search_keywords);
+CREATE INDEX IF NOT EXISTS idx_locations_aliases ON locations(aliases);
+CREATE INDEX IF NOT EXISTS idx_locations_lat_lng ON locations(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_geocoding_cache_query ON geocoding_cache(query_text);
+CREATE INDEX IF NOT EXISTS idx_geocoding_cache_provider_place ON geocoding_cache(provider_name, provider_place_id);
+CREATE INDEX IF NOT EXISTS idx_map_provider_cache_request_hash ON map_provider_cache(request_hash);
+CREATE INDEX IF NOT EXISTS idx_route_options_trip_request_id ON route_options(trip_request_id);
+CREATE INDEX IF NOT EXISTS idx_route_options_route_public_id ON route_options(route_public_id);
+CREATE INDEX IF NOT EXISTS idx_route_coordinates_route_point_order ON route_coordinates(route_id, point_index);
+CREATE INDEX IF NOT EXISTS idx_route_steps_route_step_order ON route_steps(route_id, step_index);
+CREATE INDEX IF NOT EXISTS idx_trip_sessions_session_id ON trip_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_trip_sessions_selected_route_id ON trip_sessions(selected_route_id);
+CREATE INDEX IF NOT EXISTS idx_navigation_progress_session_id ON navigation_progress(session_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
+CREATE INDEX IF NOT EXISTS idx_road_incidents_status ON road_incidents(status);
+CREATE INDEX IF NOT EXISTS idx_road_closures_status ON road_closures(status);
