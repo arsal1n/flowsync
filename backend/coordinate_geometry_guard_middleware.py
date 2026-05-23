@@ -82,7 +82,7 @@ def _read_route_endpoint(start_lat: float, start_lng: float, dest_lat: float, de
         headers={
             "Authorization": key,
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "application/geo+json, application/json, */*",
             "User-Agent": "FlowSync/1.0",
         },
     )
@@ -414,3 +414,4 @@ def register_coordinate_geometry_guard_middleware(app):
                 content=response_payload,
                 headers=headers,
             )
+
