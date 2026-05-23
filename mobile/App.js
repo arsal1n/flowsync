@@ -24,96 +24,60 @@ const DEMO_PASSWORD = "flowsync123";
 const DEFAULT_REGION = {
   latitude: 25.2048,
   longitude: 55.2708,
-  latitudeDelta: 0.28,
-  longitudeDelta: 0.28,
+  latitudeDelta: 0.35,
+  longitudeDelta: 0.35,
 };
 
 const DUBAI_LOCATIONS = [
-  { name: "Dubai Mall", address: "Downtown Dubai", latitude: 25.1972, longitude: 55.2744, category: "mall" },
-  { name: "Dubai Marina", address: "Dubai Marina", latitude: 25.0800, longitude: 55.1400, category: "waterfront" },
-  { name: "Downtown Dubai", address: "Downtown Dubai", latitude: 25.1948, longitude: 55.2708, category: "district" },
-  { name: "Business Bay", address: "Business Bay", latitude: 25.1860, longitude: 55.2608, category: "business" },
-  { name: "DXB Airport", address: "Dubai International Airport", latitude: 25.2532, longitude: 55.3657, category: "airport" },
-  { name: "Jumeirah", address: "Jumeirah Beach Road", latitude: 25.2048, longitude: 55.2553, category: "district" },
-  { name: "Palm Jumeirah", address: "Palm Jumeirah", latitude: 25.1124, longitude: 55.1390, category: "landmark" },
-  { name: "Mall of the Emirates", address: "Al Barsha", latitude: 25.1181, longitude: 55.2006, category: "mall" },
-  { name: "Dubai Internet City", address: "Dubai Internet City", latitude: 25.0953, longitude: 55.1562, category: "business" },
-  { name: "Dubai Media City", address: "Dubai Media City", latitude: 25.0923, longitude: 55.1525, category: "business" },
-  { name: "JBR", address: "Jumeirah Beach Residence", latitude: 25.0793, longitude: 55.1338, category: "beach" },
-  { name: "Academic City", address: "Dubai Academic City", latitude: 25.1256, longitude: 55.4209, category: "education" },
-  { name: "Sharjah", address: "Sharjah City", latitude: 25.3463, longitude: 55.4209, category: "city" },
-  { name: "Dubai Silicon Oasis", address: "DSO", latitude: 25.1250, longitude: 55.3800, category: "technology" },
-  { name: "Dubai Festival City", address: "Festival City", latitude: 25.2222, longitude: 55.3494, category: "mall" },
-  { name: "Deira City Centre", address: "Deira", latitude: 25.2536, longitude: 55.3306, category: "mall" },
+  { name: "Dubai Mall", address: "Downtown Dubai", latitude: 25.1972, longitude: 55.2744, category: "Mall" },
+  { name: "Dubai Marina", address: "Dubai Marina", latitude: 25.08, longitude: 55.14, category: "District" },
+  { name: "Sharjah", address: "Sharjah City", latitude: 25.3463, longitude: 55.4209, category: "City" },
+  { name: "Sharjah City Centre", address: "Al Wahda Street, Sharjah", latitude: 25.3315, longitude: 55.3955, category: "Mall" },
+  { name: "University City Sharjah", address: "University City, Sharjah", latitude: 25.2867, longitude: 55.4636, category: "Education" },
+  { name: "DXB Airport", address: "Dubai International Airport", latitude: 25.2532, longitude: 55.3657, category: "Airport" },
+  { name: "Downtown Dubai", address: "Downtown Dubai", latitude: 25.1948, longitude: 55.2708, category: "District" },
+  { name: "Business Bay", address: "Business Bay", latitude: 25.186, longitude: 55.2608, category: "Business" },
+  { name: "Mall of the Emirates", address: "Al Barsha", latitude: 25.1181, longitude: 55.2006, category: "Mall" },
+  { name: "Academic City", address: "Dubai Academic City", latitude: 25.1256, longitude: 55.4209, category: "Education" },
+  { name: "Dubai Silicon Oasis", address: "DSO", latitude: 25.125, longitude: 55.38, category: "Technology" },
+  { name: "Palm Jumeirah", address: "Palm Jumeirah", latitude: 25.1124, longitude: 55.139, category: "Landmark" },
 ];
 
 const DEMO_ACCOUNTS = [
-  { role: "Driver", email: "driver@flowsync.local", description: "Route search, navigation, alerts, parking" },
-  { role: "Admin", email: "admin@flowsync.local", description: "Control room, dashboard, route loads" },
-  { role: "RTA Operator", email: "rta@flowsync.local", description: "Traffic operations and city monitoring" },
-  { role: "Emergency", email: "emergency@flowsync.local", description: "Priority routing and emergency vehicles" },
+  {
+    role: "Driver",
+    email: "driver@flowsync.local",
+    description: "Route planning, traffic-aware navigation, alerts, trip summary",
+  },
+  {
+    role: "Admin",
+    email: "admin@flowsync.local",
+    description: "Operations dashboard, analytics, route load monitoring",
+  },
+  {
+    role: "RTA Operator",
+    email: "rta@flowsync.local",
+    description: "City traffic operations, sensors, incidents, smart routing",
+  },
+  {
+    role: "Emergency",
+    email: "emergency@flowsync.local",
+    description: "Priority routing, emergency vehicle support, incident response",
+  },
 ];
 
-const FEATURES = [
-  ["Authentication", "Login and role access", "/api/auth/login"],
-  ["Role-Based Access", "Driver/admin/emergency/RTA roles", "/api/auth/me"],
-  ["Location Search", "Dubai autocomplete and place selection", "/api/locations/search?q=dubai"],
-  ["Saved Places", "Home/work/favorite destinations", "/api/saved-places"],
-  ["User Preferences", "Route mode, eco mode, parking preferences", "/api/user/preferences"],
-  ["Smart Routing", "Adaptive route recommendations", "/api/routes/recommend"],
-  ["Route Options", "Multiple ranked route alternatives", "/api/client/route-contract"],
-  ["Active Map", "Mobile route preview with markers", "mobile"],
-  ["Turn-by-Turn", "Step preview and navigation progress", "mobile"],
-  ["Trip Lifecycle", "Start, progress, end, summary", "/api/trips/start"],
-  ["Live Navigation", "Live session updates", "/api/live/navigation/{session_id}"],
-  ["Realtime Streaming", "SSE live dashboard/navigation", "/api/stream/dashboard"],
-  ["Driver Alerts", "Congestion/parking/incident alerts", "/api/alerts/driver"],
-  ["Parking Prediction", "Destination parking difficulty", "/api/parking/predict?destination=Dubai%20Mall"],
-  ["Route Loads", "Road load balancing", "/api/routes/load"],
-  ["Traffic Sensors", "Traffic IoT readings", "/api/sensors/latest"],
-  ["Parking Sensors", "Parking sensor readings", "/api/sensors/latest"],
-  ["Crowd Reports", "User reported incidents", "/api/reports/latest"],
-  ["Incidents", "Traffic incidents and disruptions", "/api/incidents/latest"],
-  ["Events", "City events affecting mobility", "/api/events/list"],
-  ["Emergency Vehicles", "Emergency fleet visibility", "/api/emergency/vehicles"],
-  ["Emergency Routing", "Priority response routing", "/api/emergency/routes"],
-  ["Admin Dashboard", "Control room APIs", "/api/admin/dashboard"],
-  ["Digital Twin", "Simulation and what-if planning", "/api/digital-twin"],
-  ["Sustainability", "Fuel/CO2/time saved metrics", "/api/sustainability"],
-  ["Ride Sharing", "Future carpool foundation", "/api/rideshare"],
-  ["Background Jobs", "Scheduled backend jobs", "/api/jobs/status"],
-  ["Database Readiness", "SQLite now, PostgreSQL later", "/api/database/readiness"],
-  ["Provider Status", "Mock vs real provider visibility", "/api/client/bootstrap"],
-  ["Mobile Deployment", "Expo app using deployed backend", "mobile"],
+const OPERATIONS = [
+  ["Routing", "Active", "In-app route generation and route alternatives"],
+  ["Live Map", "Active", "Polyline, markers, bounds, current route focus"],
+  ["Navigation", "Active", "Turn-by-turn flow inside FlowSync"],
+  ["Traffic", "Active", "Traffic label, traffic score, alerts, incidents"],
+  ["Parking", "Backend Ready", "Parking provider can be connected by API key/feed"],
+  ["Emergency", "Backend Ready", "Emergency routing endpoints and role support"],
+  ["Sensors", "Backend Ready", "Traffic and parking sensor ingestion endpoints"],
+  ["Dashboard", "Backend Ready", "Admin and city operations dashboard endpoints"],
+  ["Realtime", "Backend Ready", "Polling and SSE streaming available"],
+  ["Database", "Ready", "SQLite demo now, PostgreSQL production later"],
 ];
-
-function findTokenDeep(value) {
-  if (!value || typeof value !== "object") return null;
-
-  const keys = [
-    "access_token",
-    "accessToken",
-    "token",
-    "jwt",
-    "auth_token",
-    "authToken",
-    "session_token",
-    "sessionToken",
-  ];
-
-  for (const key of keys) {
-    if (typeof value[key] === "string" && value[key].length > 5) {
-      return value[key];
-    }
-  }
-
-  for (const key of Object.keys(value)) {
-    const found = findTokenDeep(value[key]);
-    if (found) return found;
-  }
-
-  return null;
-}
 
 function normalizeArray(data) {
   if (Array.isArray(data)) return data;
@@ -127,13 +91,6 @@ function normalizeArray(data) {
 function normalizeCoordinate(point) {
   if (!point) return null;
 
-  if (Array.isArray(point) && point.length >= 2) {
-    return {
-      latitude: Number(point[0]),
-      longitude: Number(point[1]),
-    };
-  }
-
   const latitude = Number(point.latitude ?? point.lat);
   const longitude = Number(point.longitude ?? point.lng ?? point.lon);
 
@@ -144,34 +101,35 @@ function normalizeCoordinate(point) {
   return { latitude, longitude };
 }
 
-function getRouteCoordinates(route) {
+function routeCoordinates(route) {
   const raw =
     route?.coordinates ||
     route?.route_coordinates ||
+    route?.polyline ||
     route?.polyline_points ||
-    route?.geometry ||
     [];
 
-  const normalized = Array.isArray(raw)
+  const coords = Array.isArray(raw)
     ? raw.map(normalizeCoordinate).filter(Boolean)
     : [];
 
-  if (normalized.length >= 2) return normalized;
+  if (coords.length >= 2) {
+    return coords;
+  }
 
   return [
     { latitude: 25.1972, longitude: 55.2744 },
-    { latitude: 25.1860, longitude: 55.2608 },
-    { latitude: 25.1550, longitude: 55.2200 },
-    { latitude: 25.1181, longitude: 55.2006 },
-    { latitude: 25.0800, longitude: 55.1400 },
+    { latitude: 25.23, longitude: 55.31 },
+    { latitude: 25.28, longitude: 55.36 },
+    { latitude: 25.3463, longitude: 55.4209 },
   ];
 }
 
-function regionForCoordinates(coords) {
+function regionFromCoordinates(coords) {
   if (!coords.length) return DEFAULT_REGION;
 
-  const latitudes = coords.map((p) => p.latitude);
-  const longitudes = coords.map((p) => p.longitude);
+  const latitudes = coords.map((point) => point.latitude);
+  const longitudes = coords.map((point) => point.longitude);
 
   const minLat = Math.min(...latitudes);
   const maxLat = Math.max(...latitudes);
@@ -183,6 +141,112 @@ function regionForCoordinates(coords) {
     longitude: (minLng + maxLng) / 2,
     latitudeDelta: Math.max(maxLat - minLat + 0.08, 0.08),
     longitudeDelta: Math.max(maxLng - minLng + 0.08, 0.08),
+  };
+}
+
+function findTokenDeep(value) {
+  if (!value || typeof value !== "object") return null;
+
+  const tokenKeys = [
+    "access_token",
+    "accessToken",
+    "token",
+    "jwt",
+    "auth_token",
+    "authToken",
+    "session_token",
+    "sessionToken",
+  ];
+
+  for (const key of tokenKeys) {
+    if (typeof value[key] === "string" && value[key].length > 5) {
+      return value[key];
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    const found = findTokenDeep(value[key]);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function getTrafficDisplay(route) {
+  if (route?.traffic_display) return route.traffic_display;
+  if (route?.traffic_description) return route.traffic_description;
+
+  const score = route?.traffic_score ?? route?.congestion_score;
+
+  if (score === undefined || score === null) {
+    return "Traffic data pending";
+  }
+
+  if (score >= 8) return `Heavy traffic • ${score}/10`;
+  if (score >= 6) return `Moderate traffic • ${score}/10`;
+  if (score >= 4) return `Light traffic • ${score}/10`;
+  return `Clear traffic • ${score}/10`;
+}
+
+function getRouteName(route) {
+  return route?.route_name || route?.name || "Recommended Route";
+}
+
+function getRouteDestination(route, fallback) {
+  return route?.destination || fallback || "Destination";
+}
+
+
+function getMobileRouteScore(route) {
+  const estimatedTime = Number(route?.estimated_time || route?.duration_min || 0);
+  const distanceKm = Number(route?.distance_km || 0);
+  const trafficScore = Number(route?.traffic_score ?? route?.congestion_score ?? 0);
+  const tollCost = Number(route?.toll_cost || 0);
+  const ecoScore = Number(route?.eco_score || 0);
+
+  return (
+    estimatedTime * 0.45 +
+    trafficScore * 3.2 +
+    distanceKm * 0.22 +
+    tollCost * 0.35 -
+    ecoScore * 0.9
+  );
+}
+
+function sortRoutesBestFirst(routes) {
+  return [...routes].sort((a, b) => {
+    const aRecommended = a?.is_recommended ? -1000 : 0;
+    const bRecommended = b?.is_recommended ? -1000 : 0;
+
+    return getMobileRouteScore(a) + aRecommended - (getMobileRouteScore(b) + bRecommended);
+  });
+}
+
+function getVehicleCoordinate(coords, progressPercent) {
+  if (!coords || coords.length === 0) return null;
+
+  const safeProgress = Math.max(0, Math.min(100, progressPercent || 0));
+  const index = Math.min(
+    coords.length - 1,
+    Math.floor((safeProgress / 100) * (coords.length - 1))
+  );
+
+  return coords[index];
+}
+
+function getRemainingStats(route, progressPercent) {
+  const totalMinutes = Number(route?.estimated_time || route?.duration_min || 0);
+  const totalDistance = Number(route?.distance_km || 0);
+  const remainingRatio = Math.max(0, 1 - (progressPercent || 0) / 100);
+
+  const remainingMinutes = Math.max(0, Math.ceil(totalMinutes * remainingRatio));
+  const remainingDistance = Math.max(0, Number((totalDistance * remainingRatio).toFixed(1)));
+
+  return {
+    remainingMinutes,
+    remainingDistance,
+    etaText: remainingMinutes <= 0 ? "Arriving now" : `${remainingMinutes} min remaining`,
+    distanceText: remainingDistance <= 0 ? "0 km remaining" : `${remainingDistance} km remaining`,
   };
 }
 
@@ -199,13 +263,11 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   const [health, setHealth] = useState(null);
-  const [bootstrap, setBootstrap] = useState(null);
-
-  const [query, setQuery] = useState("dubai");
   const [locations, setLocations] = useState(DUBAI_LOCATIONS);
+  const [query, setQuery] = useState("shj");
 
   const [startLocation, setStartLocation] = useState("Dubai Mall");
-  const [destination, setDestination] = useState("Dubai Marina");
+  const [destination, setDestination] = useState("shj");
   const [routeResult, setRouteResult] = useState(null);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
 
@@ -217,57 +279,50 @@ export default function App() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [tripSummary, setTripSummary] = useState(null);
 
-  const selectedRoute = useMemo(() => {
+  const routes = useMemo(() => {
+    const all =
+      routeResult?.all_routes ||
+      routeResult?.routes ||
+      routeResult?.data?.all_routes ||
+      [];
+
+    if (Array.isArray(all) && all.length > 0) {
+      return sortRoutesBestFirst(all);
+    }
+
     const recommended =
       routeResult?.recommended_route ||
       routeResult?.recommendedRoute ||
       routeResult?.data?.recommended_route ||
       null;
 
-    const routes =
-      routeResult?.all_routes ||
-      routeResult?.routes ||
-      routeResult?.data?.all_routes ||
-      [];
+    return recommended ? [recommended] : [];
+  }, [routeResult]);
 
-    if (Array.isArray(routes) && routes.length > 0) {
-      return routes[selectedRouteIndex] || routes[0];
-    }
+  const selectedRoute = routes[selectedRouteIndex] || routes[0] || null;
 
-    return recommended;
-  }, [routeResult, selectedRouteIndex]);
+  const coords = useMemo(() => routeCoordinates(selectedRoute), [selectedRoute]);
 
-  const allRoutes = useMemo(() => {
-    const routes =
-      routeResult?.all_routes ||
-      routeResult?.routes ||
-      routeResult?.data?.all_routes ||
-      [];
-
-    if (Array.isArray(routes) && routes.length > 0) return routes;
-    return selectedRoute ? [selectedRoute] : [];
-  }, [routeResult, selectedRoute]);
-
-  const routeCoordinates = useMemo(
-    () => getRouteCoordinates(selectedRoute),
-    [selectedRoute]
-  );
-
-  const turnSteps = useMemo(() => {
+  const steps = useMemo(() => {
     return (
       selectedRoute?.turn_by_turn_steps ||
+      selectedRoute?.turn_steps ||
       selectedRoute?.steps ||
-      selectedRoute?.route_steps ||
       []
     );
   }, [selectedRoute]);
 
+  const currentStep = steps[currentStepIndex] || null;
+
   const progressPercent =
-    turnSteps.length > 0
-      ? Math.round(((currentStepIndex + 1) / turnSteps.length) * 100)
+    steps.length > 0
+      ? Math.min(100, Math.round(((currentStepIndex + 1) / steps.length) * 100))
       : sessionId
       ? 20
       : 0;
+
+  const vehicleCoordinate = getVehicleCoordinate(coords, progressPercent);
+  const remainingStats = getRemainingStats(selectedRoute, progressPercent);
 
   async function apiRequest(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -317,11 +372,8 @@ export default function App() {
 
   async function testBackend() {
     await runAction(async () => {
-      const healthData = await apiRequest("/api/health");
-      const bootstrapData = await apiRequest("/api/client/bootstrap");
-
-      setHealth(healthData);
-      setBootstrap(bootstrapData);
+      const data = await apiRequest("/api/health");
+      setHealth(data);
     });
   }
 
@@ -333,24 +385,32 @@ export default function App() {
       });
 
       const nextToken = findTokenDeep(data);
-      const userData = data.user || data.data?.user || {
-        name: "FlowSync Driver",
-        email,
-        role: email.includes("admin")
-          ? "admin"
-          : email.includes("emergency")
-          ? "emergency"
-          : "driver",
-      };
+
+      const userData = data.user ||
+        data.data?.user || {
+          name: email.includes("admin")
+            ? "FlowSync Admin"
+            : email.includes("emergency")
+            ? "Emergency Operator"
+            : email.includes("rta")
+            ? "RTA Operator"
+            : "FlowSync Driver",
+          email,
+          role: email.includes("admin")
+            ? "admin"
+            : email.includes("emergency")
+            ? "emergency"
+            : email.includes("rta")
+            ? "rta"
+            : "driver",
+        };
 
       setUser(userData);
       setToken(nextToken || "DEMO_LOCAL_TOKEN");
       setScreen("dashboard");
 
       if (!nextToken) {
-        setError(
-          "Login worked, but backend did not return a token. Continuing in demo mobile mode."
-        );
+        setError("Login accepted. Demo token mode active for mobile.");
       }
     });
   }
@@ -366,30 +426,30 @@ export default function App() {
     });
   }
 
-  async function getMyLocation() {
+  async function useMyLocation() {
     await runAction(async () => {
       const permission = await Location.requestForegroundPermissionsAsync();
 
       if (permission.status !== "granted") {
-        throw new Error("Location permission was denied.");
+        throw new Error("Location permission denied.");
       }
 
       const current = await Location.getCurrentPositionAsync({});
-      const nextLocation = {
+      const next = {
         latitude: current.coords.latitude,
         longitude: current.coords.longitude,
       };
 
-      setUserLocation(nextLocation);
+      setUserLocation(next);
       setMapRegion({
-        ...nextLocation,
+        ...next,
         latitudeDelta: 0.04,
         longitudeDelta: 0.04,
       });
     });
   }
 
-  async function recommendRoute() {
+  async function generateRoute() {
     await runAction(async () => {
       const data = await apiRequest("/api/routes/recommend", {
         method: "POST",
@@ -403,6 +463,24 @@ export default function App() {
       });
 
       setRouteResult(data);
+
+      const rawRoutes =
+        data.all_routes ||
+        data.routes ||
+        data.data?.all_routes ||
+        [];
+
+      const sortedRoutes = Array.isArray(rawRoutes) && rawRoutes.length > 0
+        ? sortRoutesBestFirst(rawRoutes)
+        : [];
+
+      const bestRoute =
+        sortedRoutes[0] ||
+        data.recommended_route ||
+        data.routes?.[0] ||
+        data.all_routes?.[0] ||
+        data.data?.recommended_route;
+
       setSelectedRouteIndex(0);
 
       const req =
@@ -412,43 +490,26 @@ export default function App() {
 
       if (req) setRequestId(String(req));
 
-      const recommended =
-        data.recommended_route || data.data?.recommended_route || data.routes?.[0];
-
-      const coords = getRouteCoordinates(recommended);
-      const nextRegion = regionForCoordinates(coords);
-      setMapRegion(nextRegion);
-
+      const nextCoords = routeCoordinates(bestRoute);
+      setMapRegion(regionFromCoordinates(nextCoords));
       setScreen("map");
     });
   }
 
-  function openExternalNavigation() {
-    const url =
-      `https://www.google.com/maps/dir/?api=1` +
-      `&origin=${encodeURIComponent(startLocation)}` +
-      `&destination=${encodeURIComponent(destination)}` +
-      `&travelmode=driving`;
-
-    Linking.openURL(url);
-  }
-
-  async function startTrip() {
+  async function startNavigation() {
     await runAction(async () => {
       if (!selectedRoute) {
-        throw new Error("Get a route before starting navigation.");
+        throw new Error("Generate a route before starting navigation.");
       }
 
+      const routeName = getRouteName(selectedRoute);
       let data = null;
-
-      const routeName =
-        selectedRoute.route_name || selectedRoute.name || "Recommended Route";
 
       const bodies = [
         {
           request_id: requestId || routeResult?.database_record?.request_id || null,
           start_location: startLocation,
-          destination,
+          destination: getRouteDestination(selectedRoute, destination),
           route_name: routeName,
           selected_route: selectedRoute,
           route: selectedRoute,
@@ -456,10 +517,10 @@ export default function App() {
         },
         {
           start_location: startLocation,
-          destination,
+          destination: getRouteDestination(selectedRoute, destination),
           selected_route: routeName,
           route_name: routeName,
-          route_steps: turnSteps,
+          route_steps: steps,
         },
       ];
 
@@ -491,23 +552,23 @@ export default function App() {
       setRequestId(String(nextRequest));
       setCurrentStepIndex(0);
       setTripSummary(null);
-      setScreen("nav");
+      setScreen("navigation");
 
       if (!data) {
-        setError(
-          "Backend start trip failed. Continuing with local demo navigation."
-        );
+        setError("Backend trip start failed. In-app demo navigation is still active.");
       }
     });
   }
 
   async function nextStep() {
     await runAction(async () => {
-      if (!sessionId) throw new Error("Start navigation first.");
+      if (!sessionId) {
+        throw new Error("Start navigation first.");
+      }
 
       const nextIndex = Math.min(
         currentStepIndex + 1,
-        Math.max(turnSteps.length - 1, 0)
+        Math.max(steps.length - 1, 0)
       );
 
       if (!sessionId.startsWith("LOCAL-")) {
@@ -520,7 +581,7 @@ export default function App() {
             }),
           });
         } catch {
-          setError("Backend progress update failed. Continuing locally.");
+          setError("Backend progress update failed. Continuing in-app locally.");
         }
       }
 
@@ -530,7 +591,9 @@ export default function App() {
 
   async function endTrip() {
     await runAction(async () => {
-      if (!sessionId) throw new Error("No active session.");
+      if (!sessionId) {
+        throw new Error("No active trip.");
+      }
 
       if (!sessionId.startsWith("LOCAL-")) {
         try {
@@ -548,34 +611,37 @@ export default function App() {
 
       setTripSummary({
         status: "completed",
-        route_name:
-          selectedRoute?.route_name || selectedRoute?.name || "Recommended Route",
+        route_name: getRouteName(selectedRoute),
         start_location: startLocation,
-        destination,
+        destination: getRouteDestination(selectedRoute, destination),
+        traffic: getTrafficDisplay(selectedRoute),
+        distance: selectedRoute?.distance_text || `${selectedRoute?.distance_km || "--"} km`,
+        duration: selectedRoute?.duration_text || `${selectedRoute?.estimated_time || "--"} min`,
         progress: progressPercent,
-        provider: routeResult?.routing_provider || "mock",
       });
 
       setScreen("summary");
     });
   }
 
-  async function testFeature(feature) {
-    await runAction(async () => {
-      if (feature[2] === "mobile") {
-        setError("This feature is handled directly inside the mobile app.");
-        return;
-      }
+  function openBackupNavigation() {
+    const url =
+      `https://www.google.com/maps/dir/?api=1` +
+      `&origin=${encodeURIComponent(startLocation)}` +
+      `&destination=${encodeURIComponent(getRouteDestination(selectedRoute, destination))}` +
+      `&travelmode=driving`;
 
-      if (feature[2].includes("{session_id}") && !sessionId) {
-        setError("Start a trip first to test this live session endpoint.");
-        return;
-      }
+    Linking.openURL(url);
+  }
 
-      const endpoint = feature[2].replace("{session_id}", sessionId);
-      await apiRequest(endpoint);
-      setError(`${feature[0]} endpoint responded successfully.`);
-    });
+  function focusRoute(route = selectedRoute) {
+    const nextCoords = routeCoordinates(route);
+    const nextRegion = regionFromCoordinates(nextCoords);
+    setMapRegion(nextRegion);
+
+    if (mapRef.current) {
+      mapRef.current.animateToRegion(nextRegion, 600);
+    }
   }
 
   function selectDemoAccount(account) {
@@ -589,10 +655,10 @@ export default function App() {
       <View style={styles.header}>
         <View>
           <Text style={styles.logo}>FlowSync</Text>
-          <Text style={styles.subtitle}>Smart City Mobility</Text>
+          <Text style={styles.subtitle}>In-app smart mobility navigation</Text>
         </View>
         <View style={styles.liveBadge}>
-          <Text style={styles.liveText}>LIVE API</Text>
+          <Text style={styles.liveText}>LIVE</Text>
         </View>
       </View>
     );
@@ -603,10 +669,10 @@ export default function App() {
 
     const tabs = [
       ["Home", "dashboard"],
-      ["Map", "map"],
       ["Route", "route"],
-      ["Nav", "nav"],
-      ["Features", "features"],
+      ["Map", "map"],
+      ["Navigate", "navigation"],
+      ["Ops", "operations"],
       ["Account", "account"],
     ];
 
@@ -631,22 +697,19 @@ export default function App() {
     return (
       <>
         <View style={styles.heroCard}>
-          <Text style={styles.heroTitle}>Move through Dubai smarter.</Text>
+          <Text style={styles.heroTitle}>Dubai to Sharjah, inside FlowSync.</Text>
           <Text style={styles.heroText}>
-            Live backend, route intelligence, active maps, smart-city features,
-            and mobile navigation flow.
+            Active map, in-app route line, markers, traffic display, and turn-by-turn navigation.
           </Text>
 
           <TouchableOpacity style={styles.outlineButton} onPress={testBackend}>
-            <Text style={styles.outlineButtonText}>Test Deployed Backend</Text>
+            <Text style={styles.outlineButtonText}>Test Backend</Text>
           </TouchableOpacity>
 
           {health && (
             <View style={styles.successBox}>
-              <Text style={styles.successTitle}>Backend reachable</Text>
-              <Text style={styles.muted}>
-                {health.message || health.service || "FlowSync API online"}
-              </Text>
+              <Text style={styles.successTitle}>Backend online</Text>
+              <Text style={styles.muted}>{health.message || health.service}</Text>
             </View>
           )}
         </View>
@@ -671,12 +734,12 @@ export default function App() {
           />
 
           <TouchableOpacity style={styles.primaryButton} onPress={login}>
-            <Text style={styles.primaryButtonText}>Enter FlowSync</Text>
+            <Text style={styles.primaryButtonText}>Enter App</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>Demo accounts</Text>
+          <Text style={styles.title}>Role accounts</Text>
           {DEMO_ACCOUNTS.map((account) => (
             <TouchableOpacity
               key={account.email}
@@ -697,19 +760,19 @@ export default function App() {
     return (
       <>
         <View style={styles.heroCard}>
-          <Text style={styles.heroTitle}>Control your journey.</Text>
+          <Text style={styles.heroTitle}>Ready for smart navigation.</Text>
           <Text style={styles.heroText}>
-            {user?.name || "FlowSync User"} • {user?.role || "driver"}
+            {user?.name || "FlowSync Driver"} • {user?.role || "driver"}
           </Text>
 
           <View style={styles.metricsRow}>
-            <Metric label="Features" value="30" />
             <Metric label="Backend" value="Live" />
-            <Metric label="Mode" value="Mobile" />
+            <Metric label="Map" value="In-app" />
+            <Metric label="Ops" value="30+" />
           </View>
 
           <TouchableOpacity style={styles.primaryButton} onPress={() => setScreen("route")}>
-            <Text style={styles.primaryButtonText}>Plan Smart Route</Text>
+            <Text style={styles.primaryButtonText}>Plan Route</Text>
           </TouchableOpacity>
         </View>
 
@@ -717,24 +780,18 @@ export default function App() {
           <Text style={styles.title}>Quick actions</Text>
 
           <View style={styles.actionGrid}>
-            <Action title="Use My Location" onPress={getMyLocation} />
-            <Action title="Search Places" onPress={searchLocations} />
-            <Action title="Get Route" onPress={recommendRoute} />
+            <Action title="Use GPS" onPress={useMyLocation} />
+            <Action title="Search SHJ" onPress={searchLocations} />
+            <Action title="Get Route" onPress={generateRoute} />
             <Action title="Open Map" onPress={() => setScreen("map")} />
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>Provider status</Text>
-          <Text style={styles.muted}>
-            Backend: {API_BASE_URL}
-          </Text>
-          <Text style={styles.muted}>
-            Provider: {routeResult?.routing_provider || "mock"}
-          </Text>
-          <Text style={styles.muted}>
-            Status: {routeResult?.provider_status || "mock_fallback"}
-          </Text>
+          <Text style={styles.title}>System status</Text>
+          <Text style={styles.muted}>API: {API_BASE_URL}</Text>
+          <Text style={styles.muted}>Routing: {routeResult?.provider_status || "ready"}</Text>
+          <Text style={styles.muted}>Navigation: In-app primary mode</Text>
         </View>
       </>
     );
@@ -751,9 +808,10 @@ export default function App() {
               style={[styles.input, styles.searchInput]}
               value={query}
               onChangeText={setQuery}
-              placeholder="Search Dubai"
+              placeholder="Search Dubai / Sharjah"
               placeholderTextColor="#8aa0b8"
             />
+
             <TouchableOpacity style={styles.searchButton} onPress={searchLocations}>
               <Text style={styles.searchButtonText}>Search</Text>
             </TouchableOpacity>
@@ -762,12 +820,14 @@ export default function App() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {locations.slice(0, 12).map((item, index) => (
               <TouchableOpacity
-                key={`${item.name || index}`}
+                key={`${item.name}-${index}`}
                 style={styles.locationChip}
                 onPress={() => setDestination(item.name)}
               >
                 <Text style={styles.locationChipTitle}>{item.name}</Text>
-                <Text style={styles.locationChipText}>{item.category || "Dubai"}</Text>
+                <Text style={styles.locationChipText}>
+                  {item.city || item.category || item.type || "UAE"}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -790,34 +850,33 @@ export default function App() {
             onChangeText={setDestination}
           />
 
-          <TouchableOpacity style={styles.primaryButton} onPress={recommendRoute}>
-            <Text style={styles.primaryButtonText}>Generate Smart Route</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={generateRoute}>
+            <Text style={styles.primaryButtonText}>Generate In-app Route</Text>
           </TouchableOpacity>
         </View>
 
-        {allRoutes.length > 0 && (
+        {routes.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.title}>Route options</Text>
 
-            {allRoutes.slice(0, 4).map((route, index) => (
+            {routes.slice(0, 4).map((route, index) => (
               <TouchableOpacity
-                key={`${route.route_name || index}`}
+                key={`${getRouteName(route)}-${index}`}
                 style={[
                   styles.routeOption,
                   selectedRouteIndex === index ? styles.routeOptionActive : null,
                 ]}
                 onPress={() => {
                   setSelectedRouteIndex(index);
-                  setMapRegion(regionForCoordinates(getRouteCoordinates(route)));
+                  focusRoute(route);
                 }}
               >
-                <Text style={styles.listTitle}>
-                  {route.route_name || route.name || `Route ${index + 1}`}
-                </Text>
+                <Text style={styles.listTitle}>{getRouteName(route)}</Text>
                 <Text style={styles.muted}>
-                  {route.estimated_time || "--"} min • {route.distance_km || "--"} km • traffic{" "}
-                  {route.congestion_score ?? "--"}
+                  {route.duration_text || `${route.estimated_time || "--"} min`} •{" "}
+                  {route.distance_text || `${route.distance_km || "--"} km`}
                 </Text>
+                <Text style={styles.trafficText}>{getTrafficDisplay(route)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -826,76 +885,119 @@ export default function App() {
     );
   }
 
-  function renderMap() {
-    const start = routeCoordinates[0];
-    const end = routeCoordinates[routeCoordinates.length - 1];
+  function renderMapView({ compact = false } = {}) {
+    const start = coords[0];
+    const end = coords[coords.length - 1];
 
     return (
-      <>
-        <View style={styles.mapCard}>
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
-            region={mapRegion}
-            onRegionChangeComplete={setMapRegion}
-            showsUserLocation
-            showsMyLocationButton
-          >
-            {start && (
-              <Marker coordinate={start} title="Start" description={startLocation} />
-            )}
-            {end && (
-              <Marker coordinate={end} title="Destination" description={destination} />
-            )}
-            {userLocation && (
-              <Marker coordinate={userLocation} title="You" pinColor="blue" />
-            )}
-            {routeCoordinates.length > 1 && (
-              <Polyline
-                coordinates={routeCoordinates}
-                strokeWidth={6}
-                strokeColor="#22c55e"
-              />
-            )}
-          </MapView>
+      <View style={[styles.mapCard, compact ? styles.mapCardCompact : null]}>
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+          region={mapRegion}
+          onRegionChangeComplete={setMapRegion}
+          showsUserLocation
+          showsMyLocationButton
+        >
+          {start && (
+            <Marker coordinate={start} title="Start" description={startLocation} />
+          )}
 
-          <View style={styles.mapOverlay}>
-            <Text style={styles.mapTitle}>
-              {selectedRoute?.route_name || selectedRoute?.name || "Smart Route"}
-            </Text>
-            <Text style={styles.mapText}>
-              {startLocation} → {destination}
-            </Text>
-          </View>
+          {end && (
+            <Marker
+              coordinate={end}
+              title="Destination"
+              description={getRouteDestination(selectedRoute, destination)}
+            />
+          )}
+
+          {userLocation && (
+            <Marker coordinate={userLocation} title="You" pinColor="blue" />
+          )}
+
+          {vehicleCoordinate && sessionId && (
+            <Marker
+              coordinate={vehicleCoordinate}
+              title="FlowSync Vehicle"
+              description={remainingStats.etaText}
+              pinColor="green"
+            />
+          )}
+
+          {coords.length > 1 && (
+            <Polyline coordinates={coords} strokeWidth={6} strokeColor="#22c55e" />
+          )}
+        </MapView>
+
+        <View style={styles.mapOverlay}>
+          <Text style={styles.mapTitle}>
+            {selectedRoute ? getRouteName(selectedRoute) : "No route selected"}
+          </Text>
+          <Text style={styles.mapText}>
+            {startLocation} → {getRouteDestination(selectedRoute, destination)}
+          </Text>
+          <Text style={styles.trafficText}>
+            {selectedRoute ? getTrafficDisplay(selectedRoute) : "Generate a route first"}
+          </Text>
         </View>
+      </View>
+    );
+  }
+
+  function renderMap() {
+    return (
+      <>
+        {renderMapView()}
 
         <View style={styles.card}>
-          <Text style={styles.title}>Active route</Text>
+          <Text style={styles.title}>In-app route control</Text>
 
-          <View style={styles.metricsRow}>
-            <Metric label="Time" value={`${selectedRoute?.estimated_time || "--"}m`} />
-            <Metric label="Distance" value={`${selectedRoute?.distance_km || "--"}km`} />
-            <Metric label="Traffic" value={String(selectedRoute?.congestion_score ?? "--")} />
-          </View>
+          {selectedRoute ? (
+            <>
+              <View style={styles.metricsRow}>
+                <Metric
+                  label="Time"
+                  value={selectedRoute.duration_text || `${selectedRoute.estimated_time || "--"}m`}
+                />
+                <Metric
+                  label="Distance"
+                  value={selectedRoute.distance_text || `${selectedRoute.distance_km || "--"}km`}
+                />
+                <Metric
+                  label="Traffic"
+                  value={`${selectedRoute.traffic_score ?? selectedRoute.congestion_score ?? "--"}/10`}
+                />
+              </View>
 
-          <TouchableOpacity style={styles.primaryButton} onPress={startTrip}>
-            <Text style={styles.primaryButtonText}>Start Navigation</Text>
-          </TouchableOpacity>
+              <Text style={styles.trafficBig}>{getTrafficDisplay(selectedRoute)}</Text>
 
-          <TouchableOpacity style={styles.outlineButton} onPress={openExternalNavigation}>
-            <Text style={styles.outlineButtonText}>Open in Google Maps</Text>
-          </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={startNavigation}>
+                <Text style={styles.primaryButtonText}>Start In-app Navigation</Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity style={styles.outlineButton} onPress={getMyLocation}>
-            <Text style={styles.outlineButtonText}>Center on My Location</Text>
-          </TouchableOpacity>
+              <TouchableOpacity style={styles.outlineButton} onPress={() => focusRoute()}>
+                <Text style={styles.outlineButtonText}>Center Route</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.smallBackupButton} onPress={openBackupNavigation}>
+                <Text style={styles.smallBackupText}>Backup only: open system maps</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.muted}>Generate a route first.</Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => setScreen("route")}>
+                <Text style={styles.primaryButtonText}>Go to Route Planner</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
-        {turnSteps.length > 0 && (
+        {steps.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.title}>Directions preview</Text>
-            {turnSteps.slice(0, 6).map((step, index) => (
+            {steps.slice(0, 6).map((step, index) => (
               <View key={`${index}`} style={styles.stepRow}>
                 <Text style={styles.stepCircle}>{index + 1}</Text>
                 <Text style={styles.stepText}>
@@ -910,57 +1012,63 @@ export default function App() {
   }
 
   function renderNavigation() {
-    const currentStep = turnSteps[currentStepIndex];
-
     return (
       <>
+        {renderMapView({ compact: true })}
+
         <View style={styles.heroCard}>
           <Text style={styles.heroTitle}>
-            {sessionId ? "Navigation active" : "No active trip"}
+            {sessionId ? "In-app navigation active" : "Navigation not started"}
           </Text>
           <Text style={styles.heroText}>
-            {sessionId
-              ? `${startLocation} → ${destination}`
-              : "Generate a route and start navigation first."}
+            {startLocation} → {getRouteDestination(selectedRoute, destination)}
           </Text>
 
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
           </View>
 
-          <Text style={styles.muted}>{progressPercent}% complete</Text>
+          <Text style={styles.muted}>{progressPercent}% route progress</Text>
+          <Text style={styles.trafficBig}>{remainingStats.etaText}</Text>
+          <Text style={styles.muted}>{remainingStats.distanceText}</Text>
+          <Text style={styles.muted}>{getTrafficDisplay(selectedRoute)}</Text>
+          <Text style={styles.trafficBig}>{remainingStats.etaText}</Text>
+          <Text style={styles.muted}>{remainingStats.distanceText}</Text>
+          <Text style={styles.muted}>{getTrafficDisplay(selectedRoute)}</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.title}>Current instruction</Text>
+
           <Text style={styles.bigInstruction}>
             {currentStep?.instruction ||
               currentStep?.text ||
-              "Continue on the recommended route."}
+              "Start navigation to begin turn-by-turn guidance."}
           </Text>
 
           <Text style={styles.muted}>
-            Step {Math.min(currentStepIndex + 1, Math.max(turnSteps.length, 1))} of{" "}
-            {Math.max(turnSteps.length, 1)}
+            Step {Math.min(currentStepIndex + 1, Math.max(steps.length, 1))} of{" "}
+            {Math.max(steps.length, 1)}
           </Text>
 
           <TouchableOpacity style={styles.primaryButton} onPress={nextStep}>
             <Text style={styles.primaryButtonText}>Next Step</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.outlineButton} onPress={openExternalNavigation}>
-            <Text style={styles.outlineButtonText}>Open Real Navigation App</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity style={styles.dangerButton} onPress={endTrip}>
             <Text style={styles.dangerButtonText}>End Trip</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.smallBackupButton} onPress={openBackupNavigation}>
+            <Text style={styles.smallBackupText}>Emergency backup: system maps</Text>
+          </TouchableOpacity>
         </View>
 
-        {turnSteps.length > 0 && (
+        {steps.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.title}>Turn-by-turn</Text>
-            {turnSteps.slice(0, 10).map((step, index) => (
+
+            {steps.slice(0, 10).map((step, index) => (
               <View
                 key={`${index}`}
                 style={[
@@ -980,28 +1088,54 @@ export default function App() {
     );
   }
 
-  function renderFeatures() {
+  function renderOperations() {
     return (
-      <View style={styles.card}>
-        <Text style={styles.title}>30 smart-city features</Text>
-        <Text style={styles.muted}>
-          Tap a feature to test its endpoint or view its mobile capability.
-        </Text>
+      <>
+        <View style={styles.heroCard}>
+          <Text style={styles.heroTitle}>Operations Hub</Text>
+          <Text style={styles.heroText}>
+            Structured view of FlowSync city mobility modules. This is not an ad page;
+            it shows what is active, backend-ready, or provider-ready.
+          </Text>
+        </View>
 
-        <View style={styles.featureGrid}>
-          {FEATURES.map((feature, index) => (
-            <TouchableOpacity
-              key={`${feature[0]}-${index}`}
-              style={styles.featureCard}
-              onPress={() => testFeature(feature)}
-            >
-              <Text style={styles.featureNumber}>{String(index + 1).padStart(2, "0")}</Text>
-              <Text style={styles.featureTitle}>{feature[0]}</Text>
-              <Text style={styles.featureText}>{feature[1]}</Text>
-            </TouchableOpacity>
+        <View style={styles.card}>
+          <Text style={styles.title}>Operational modules</Text>
+
+          {OPERATIONS.map((item, index) => (
+            <View key={`${item[0]}-${index}`} style={styles.operationItem}>
+              <View style={styles.operationNumber}>
+                <Text style={styles.operationNumberText}>{index + 1}</Text>
+              </View>
+
+              <View style={styles.operationBody}>
+                <Text style={styles.listTitle}>{item[0]}</Text>
+                <Text style={styles.muted}>{item[2]}</Text>
+              </View>
+
+              <View style={styles.statusPill}>
+                <Text style={styles.statusText}>{item[1]}</Text>
+              </View>
+            </View>
           ))}
         </View>
-      </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>Current route intelligence</Text>
+          <Text style={styles.muted}>
+            Route: {selectedRoute ? getRouteName(selectedRoute) : "No route selected"}
+          </Text>
+          <Text style={styles.muted}>
+            Destination: {getRouteDestination(selectedRoute, destination)}
+          </Text>
+          <Text style={styles.trafficBig}>
+            {selectedRoute ? getTrafficDisplay(selectedRoute) : "Traffic pending"}
+          </Text>
+          <Text style={styles.muted}>
+            Provider: {routeResult?.provider_status || "waiting for route"}
+          </Text>
+        </View>
+      </>
     );
   }
 
@@ -1009,7 +1143,7 @@ export default function App() {
     return (
       <>
         <View style={styles.card}>
-          <Text style={styles.title}>Account and roles</Text>
+          <Text style={styles.title}>Account</Text>
           <Text style={styles.listTitle}>{user?.name || "FlowSync User"}</Text>
           <Text style={styles.muted}>{user?.email || email}</Text>
           <Text style={styles.muted}>Role: {user?.role || "driver"}</Text>
@@ -1019,6 +1153,7 @@ export default function App() {
             onPress={() => {
               setToken("");
               setUser(null);
+              setSessionId("");
               setScreen("login");
             }}
           >
@@ -1027,7 +1162,7 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>Switch demo role</Text>
+          <Text style={styles.title}>Switch role</Text>
           {DEMO_ACCOUNTS.map((account) => (
             <TouchableOpacity
               key={account.email}
@@ -1059,8 +1194,9 @@ export default function App() {
             </View>
 
             <Text style={styles.muted}>Route: {tripSummary.route_name}</Text>
-            <Text style={styles.muted}>Provider: {tripSummary.provider}</Text>
-            <Text style={styles.muted}>Progress: {tripSummary.progress}%</Text>
+            <Text style={styles.muted}>Duration: {tripSummary.duration}</Text>
+            <Text style={styles.muted}>Distance: {tripSummary.distance}</Text>
+            <Text style={styles.trafficBig}>{tripSummary.traffic}</Text>
           </>
         ) : (
           <>
@@ -1077,6 +1213,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
+
       <ScrollView contentContainerStyle={styles.container}>
         {renderHeader()}
         {renderTabs()}
@@ -1085,8 +1222,8 @@ export default function App() {
         {screen === "dashboard" && renderDashboard()}
         {screen === "route" && renderRoute()}
         {screen === "map" && renderMap()}
-        {screen === "nav" && renderNavigation()}
-        {screen === "features" && renderFeatures()}
+        {screen === "navigation" && renderNavigation()}
+        {screen === "operations" && renderOperations()}
         {screen === "account" && renderAccount()}
         {screen === "summary" && renderSummary()}
 
@@ -1104,7 +1241,7 @@ export default function App() {
         ) : null}
 
         <Text style={styles.footer}>
-          Real traffic, parking, IoT and production DB become real when external providers are connected.
+          FlowSync uses in-app navigation first. External maps are backup only.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -1264,6 +1401,19 @@ const styles = StyleSheet.create({
     color: "#7dd3fc",
     fontWeight: "900",
   },
+  smallBackupButton: {
+    borderColor: "#475569",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 11,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  smallBackupText: {
+    color: "#94a3b8",
+    fontWeight: "800",
+    fontSize: 12,
+  },
   dangerButton: {
     backgroundColor: "#ef4444",
     borderRadius: 16,
@@ -1292,6 +1442,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
+  trafficText: {
+    color: "#fbbf24",
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 6,
+  },
+  trafficBig: {
+    color: "#fbbf24",
+    fontSize: 16,
+    fontWeight: "900",
+    marginTop: 12,
+  },
   listItem: {
     backgroundColor: "#0b1626",
     borderRadius: 16,
@@ -1318,7 +1480,7 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: "#ffffff",
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "900",
   },
   metricLabel: {
@@ -1364,7 +1526,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   locationChip: {
-    width: 150,
+    width: 160,
     backgroundColor: "#0b1626",
     borderRadius: 18,
     padding: 12,
@@ -1394,12 +1556,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#123458",
   },
   mapCard: {
-    height: Math.min(width * 1.05, 430),
+    height: Math.min(width * 1.08, 440),
     borderRadius: 26,
     overflow: "hidden",
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#1f334f",
+  },
+  mapCardCompact: {
+    height: 310,
   },
   map: {
     flex: 1,
@@ -1409,7 +1574,7 @@ const styles = StyleSheet.create({
     left: 14,
     right: 14,
     bottom: 14,
-    backgroundColor: "rgba(6,17,31,0.92)",
+    backgroundColor: "rgba(6,17,31,0.93)",
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
@@ -1471,36 +1636,44 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     lineHeight: 28,
   },
-  featureGrid: {
+  operationItem: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 14,
-  },
-  featureCard: {
-    width: "48%",
+    alignItems: "center",
     backgroundColor: "#0b1626",
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 12,
-    marginRight: "2%",
-    marginBottom: 10,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: "#1f334f",
   },
-  featureNumber: {
-    color: "#5eead4",
-    fontWeight: "900",
-    fontSize: 12,
+  operationNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#22c55e",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
   },
-  featureTitle: {
-    color: "#ffffff",
+  operationNumberText: {
+    color: "#03120a",
     fontWeight: "900",
-    marginTop: 6,
   },
-  featureText: {
-    color: "#9fb4c8",
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 17,
+  operationBody: {
+    flex: 1,
+  },
+  statusPill: {
+    backgroundColor: "#0f2440",
+    borderColor: "#38bdf8",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  statusText: {
+    color: "#7dd3fc",
+    fontSize: 10,
+    fontWeight: "900",
   },
   loadingBox: {
     alignItems: "center",
@@ -1524,3 +1697,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+
+
+
+
