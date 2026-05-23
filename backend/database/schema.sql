@@ -1128,3 +1128,100 @@ ON route_options(route_public_id);
 
 CREATE INDEX IF NOT EXISTS idx_trip_sessions_selected_route_public_id
 ON trip_sessions(selected_route_public_id);
+-- =========================================================
+-- FINAL REAL ROUTING / MOBILE NAVIGATION ACCEPTANCE SUPPORT
+-- =========================================================
+
+-- Location aliases for search matching:
+-- Example: Manipal, Manipal Dubai, Academic City
+ALTER TABLE locations ADD COLUMN aliases TEXT;
+
+-- Road/street name for turn-by-turn navigation steps
+ALTER TABLE route_steps ADD COLUMN street_name TEXT;
+
+-- Closest route point for GPS matching/progress calculation
+ALTER TABLE navigation_progress ADD COLUMN closest_route_point_index INTEGER;
+
+-- Cache expiry/raw provider refresh support
+ALTER TABLE alerts ADD COLUMN expires_at TEXT;
+ALTER TABLE road_incidents ADD COLUMN expires_at TEXT;
+
+-- Traffic scoring fields for route scoring
+ALTER TABLE traffic_snapshots ADD COLUMN congestion_score REAL;
+ALTER TABLE traffic_snapshots ADD COLUMN delay_min REAL DEFAULT 0;
+
+-- Waze-style user reports
+CREATE TABLE IF NOT EXISTS user_reports (
+    report_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type TEXT NOT NULL,
+    description TEXT,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    road_segment_id INTEGER,
+    route_id INTEGER,
+    reported_by_user_id INTEGER,
+    status TEXT DEFAULT 'active',
+    confirmation_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    FOREIGN KEY (road_segment_id) REFERENCES road_segments(road_segment_id),
+    FOREIGN KEY (route_id) REFERENCES route_options(route_id),
+    FOREIGN KEY (reported_by_user_id) REFERENCES users(user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_report_confirmations (
+    confirmation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    confirmation_type TEXT DEFAULT 'upvote',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (report_id) REFERENCES user_reports(report_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    UNIQUE(report_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_reports_type ON user_reports(report_type);
+CREATE INDEX IF NOT EXISTS idx_user_reports_status ON user_reports(status);
+CREATE INDEX IF NOT EXISTS idx_user_reports_location ON user_reports(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_user_reports_route_id ON user_reports(route_id);
+CREATE INDEX IF NOT EXISTS idx_user_report_confirmations_report_id ON user_report_confirmations(report_id);
+-- =========================================================
+-- FINAL DATABASE HARDENING FOR REAL MAPS/NAVIGATION
+-- =========================================================
+
+-- User reports extra fields for Waze-style reporting
+ALTER TABLE user_reports ADD COLUMN severity TEXT DEFAULT 'medium';
+ALTER TABLE user_reports ADD COLUMN dismissed_count INTEGER DEFAULT 0;
+
+-- Trip summary fields so summary is stored in DB, not only frontend state
+ALTER TABLE trip_sessions ADD COLUMN total_distance_km REAL;
+ALTER TABLE trip_sessions ADD COLUMN total_time_min REAL;
+ALTER TABLE trip_sessions ADD COLUMN summary_congestion_score REAL;
+ALTER TABLE trip_sessions ADD COLUMN summary_flowsync_score REAL;
+ALTER TABLE trip_sessions ADD COLUMN fuel_saved_estimate REAL;
+ALTER TABLE trip_sessions ADD COLUMN co2_saved_estimate REAL;
+
+-- Parking final demo support
+ALTER TABLE parking_zones ADD COLUMN capacity INTEGER;
+ALTER TABLE parking_zones ADD COLUMN price_per_hour REAL;
+
+
+-- Important indexes for backend/mobile performance
+CREATE INDEX IF NOT EXISTS idx_locations_name ON locations(name);
+CREATE INDEX IF NOT EXISTS idx_locations_search_keywords ON locations(search_keywords);
+CREATE INDEX IF NOT EXISTS idx_locations_aliases ON locations(aliases);
+CREATE INDEX IF NOT EXISTS idx_locations_lat_lng ON locations(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_geocoding_cache_query ON geocoding_cache(query_text);
+CREATE INDEX IF NOT EXISTS idx_geocoding_cache_provider_place ON geocoding_cache(provider_name, provider_place_id);
+CREATE INDEX IF NOT EXISTS idx_map_provider_cache_request_hash ON map_provider_cache(request_hash);
+CREATE INDEX IF NOT EXISTS idx_route_options_trip_request_id ON route_options(trip_request_id);
+CREATE INDEX IF NOT EXISTS idx_route_options_route_public_id ON route_options(route_public_id);
+CREATE INDEX IF NOT EXISTS idx_route_coordinates_route_point_order ON route_coordinates(route_id, point_index);
+CREATE INDEX IF NOT EXISTS idx_route_steps_route_step_order ON route_steps(route_id, step_index);
+CREATE INDEX IF NOT EXISTS idx_trip_sessions_session_id ON trip_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_trip_sessions_selected_route_id ON trip_sessions(selected_route_id);
+CREATE INDEX IF NOT EXISTS idx_navigation_progress_session_id ON navigation_progress(session_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
+CREATE INDEX IF NOT EXISTS idx_road_incidents_status ON road_incidents(status);
+CREATE INDEX IF NOT EXISTS idx_road_closures_status ON road_closures(status);

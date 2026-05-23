@@ -763,7 +763,7 @@ SET route_public_id =
         WHEN 4 THEN 'ROUTE-A-AIRPORT'
         WHEN 5 THEN 'ROUTE-B-AIRPORT'
         WHEN 6 THEN 'ROUTE-A-SHARJAH'
-        WHEN 7 THEN 'ROUTE-D'
+        WHEN 7 THEN 'ROUTE-B-SHARJAH'
         ELSE 'ROUTE-' || route_id
     END;
 
@@ -973,3 +973,133 @@ SET selected_route_public_id = (
 )
 WHERE selected_route_public_id IS NULL
   AND selected_route_id IS NOT NULL;
+  -- =========================================================
+-- FINAL REAL ROUTING / MOBILE NAVIGATION ACCEPTANCE SEED
+-- =========================================================
+
+-- Search aliases for important mobile locations
+UPDATE locations
+SET aliases = 'Manipal,Manipal Dubai,Manipal University Dubai,Academic City,University'
+WHERE LOWER(name) LIKE '%academic city%';
+
+UPDATE locations
+SET aliases = 'DXB,Dubai Airport,Dubai International Airport,Airport'
+WHERE LOWER(name) LIKE '%dxb%' OR LOWER(name) LIKE '%airport%';
+
+UPDATE locations
+SET aliases = 'MOE,Mall of Emirates,Emirates Mall'
+WHERE LOWER(name) LIKE '%mall of the emirates%';
+
+UPDATE locations
+SET aliases = 'RAK,Ras Al Khaimah,Ras Al Khaimah City'
+WHERE LOWER(name) LIKE '%ras al khaimah%';
+
+-- Add road/street names for Route D turn-by-turn demo steps
+UPDATE route_steps
+SET street_name = 'Downtown Dubai Exit Road'
+WHERE route_id = 8 AND step_index = 0;
+
+UPDATE route_steps
+SET street_name = 'Al Khail Road Alternative Corridor'
+WHERE route_id = 8 AND step_index = 1;
+
+UPDATE route_steps
+SET street_name = 'Emirates Road Alternative Corridor'
+WHERE route_id = 8 AND step_index = 2;
+
+UPDATE route_steps
+SET street_name = 'Dubai Marina Exit'
+WHERE route_id = 8 AND step_index = 3;
+
+UPDATE route_steps
+SET street_name = 'Dubai Marina Local Road'
+WHERE route_id = 8 AND step_index = 4;
+
+-- Make Route D have more than 10 ordered geometry points
+INSERT OR IGNORE INTO route_coordinates
+(route_id, route_public_id, point_index, latitude, longitude, distance_from_start_m, provider_name)
+VALUES
+(8, 'ROUTE-D', 10, 25.0740, 55.1360, 31200, 'seed'),
+(8, 'ROUTE-D', 11, 25.0790, 55.1380, 31800, 'seed'),
+(8, 'ROUTE-D', 12, 25.0800, 55.1400, 32000, 'seed');
+
+-- Backfill closest route point index for demo navigation progress
+UPDATE navigation_progress
+SET closest_route_point_index = 1
+WHERE session_id = 8;
+
+-- Backfill traffic scoring fields
+UPDATE traffic_snapshots
+SET
+    congestion_score = congestion_level,
+    delay_min =
+        CASE
+            WHEN congestion_level >= 8 THEN 10
+            WHEN congestion_level >= 6 THEN 6
+            WHEN congestion_level >= 4 THEN 4
+            ELSE 2
+        END;
+
+-- Add sample Waze-style user reports
+INSERT OR IGNORE INTO user_reports
+(report_id, report_type, description, latitude, longitude, road_segment_id, route_id, reported_by_user_id, status, confirmation_count, expires_at)
+VALUES
+(1, 'accident', 'Minor accident reported near Downtown exit.', 25.1972, 55.2744, 1, 8, 1, 'active', 2, DATETIME('now', '+2 hours')),
+(2, 'traffic', 'Heavy traffic building near Business Bay corridor.', 25.1850, 55.2770, 2, 8, 5, 'active', 3, DATETIME('now', '+2 hours')),
+(3, 'hazard', 'Road hazard reported near Marina exit.', 25.0800, 55.1400, 8, 8, 1, 'active', 1, DATETIME('now', '+2 hours'));
+
+INSERT OR IGNORE INTO user_report_confirmations
+(confirmation_id, report_id, user_id, confirmation_type)
+VALUES
+(1, 1, 5, 'upvote'),
+(2, 1, 3, 'upvote'),
+(3, 2, 1, 'upvote'),
+(4, 2, 3, 'upvote'),
+(5, 2, 5, 'upvote'),
+(6, 3, 5, 'upvote');
+-- =========================================================
+-- FINAL DATABASE HARDENING SEED FOR REAL MAPS/NAVIGATION
+-- =========================================================
+
+-- Fill user report severity/dismissed fields
+UPDATE user_reports
+SET severity = COALESCE(severity, 'medium'),
+    dismissed_count = COALESCE(dismissed_count, 0);
+
+-- Store demo trip summary for selected Route D session
+UPDATE trip_sessions
+SET
+    total_distance_km = 30.4,
+    total_time_min = 31,
+    summary_congestion_score = 3,
+    summary_flowsync_score = 24.7,
+    fuel_saved_estimate = 0.9,
+    co2_saved_estimate = 2.1
+WHERE session_id = 8;
+
+-- Parking final demo values
+UPDATE parking_zones
+SET
+    capacity = COALESCE(capacity, total_spaces),
+    price_per_hour = COALESCE(price_per_hour, 4.0),
+    updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP);
+
+-- Backfill selected route public IDs for all demo sessions
+UPDATE trip_sessions
+SET selected_route_public_id = (
+    SELECT route_options.route_public_id
+    FROM route_options
+    WHERE route_options.route_id = trip_sessions.selected_route_id
+)
+WHERE selected_route_public_id IS NULL
+  AND selected_route_id IS NOT NULL;
+  -- Final trip summary values for selected Route D session
+UPDATE trip_sessions
+SET
+    total_distance_km = 30.4,
+    total_time_min = 31,
+    summary_congestion_score = 3,
+    summary_flowsync_score = 24.7,
+    fuel_saved_estimate = 0.9,
+    co2_saved_estimate = 2.1
+WHERE session_id = 8;
