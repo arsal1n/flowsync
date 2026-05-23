@@ -841,3 +841,10 @@ async def mobile_v2_final_summary_intercept(request, call_next):
         )
 
     return await call_next(request)
+
+# --- FlowSync mobile v3 polish middleware ---
+# Handles demo roles, better search fallback, same-location guard, and trip cancellation status.
+
+from mobile_v3_polish import register_mobile_v3_polish
+
+register_mobile_v3_polish(app)
