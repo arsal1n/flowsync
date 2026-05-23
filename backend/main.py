@@ -848,3 +848,11 @@ async def mobile_v2_final_summary_intercept(request, call_next):
 from mobile_v3_polish import register_mobile_v3_polish
 
 register_mobile_v3_polish(app)
+
+# --- FlowSync real routing/geocoding provider middleware ---
+# Uses OpenRouteService for real UAE geocoding and road-following route geometry.
+# Falls back to existing backend route logic when disabled or provider fails.
+
+from real_provider_middleware import register_real_provider_middleware
+
+register_real_provider_middleware(app)
