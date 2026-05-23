@@ -1,10 +1,12 @@
 # backend/providers/maps_contract.py
 
 """
-Shared contract helpers for FlowSync map/routing providers.
+Shared contract helpers for FlowSync real maps/routing providers.
 
 This file keeps provider output consistent before Member 2 connects it
 to the main backend API.
+
+It is intentionally standalone and does not modify backend/main.py.
 """
 
 from __future__ import annotations
@@ -19,8 +21,15 @@ STATUS_REAL_ROUTING_SUCCESS = "real_routing_success"
 
 STATUS_PROVIDER_API_KEY_MISSING = "provider_api_key_missing"
 STATUS_PROVIDER_REQUEST_FAILED = "provider_request_failed"
-STATUS_PROVIDER_EMPTY_RESULT = "provider_empty_result"
+STATUS_PROVIDER_NO_PLACES_FOUND = "provider_no_places_found"
+STATUS_PROVIDER_NO_ROUTES_FOUND = "provider_no_routes_found"
 STATUS_PROVIDER_INVALID_RESPONSE = "provider_invalid_response"
+STATUS_INVALID_COORDINATES = "invalid_coordinates"
+STATUS_SAME_LOCATION = "same_location"
+STATUS_RATE_LIMITED = "rate_limited"
+
+# Backward-compatible alias for older helper code.
+STATUS_PROVIDER_EMPTY_RESULT = STATUS_PROVIDER_NO_ROUTES_FOUND
 
 
 def safe_float(value: Any) -> Optional[float]:
@@ -55,7 +64,10 @@ def make_provider_error(
         "provider_status": provider_status,
         "success": False,
         "operation": operation,
+        "message": message,
         "error": message,
+        "real_geometry": False,
+        "mock_fallback": False,
     }
 
     if operation == "search_places":
@@ -63,6 +75,12 @@ def make_provider_error(
 
     if operation == "get_routes":
         response["routes"] = []
+        response["all_routes"] = []
+        response["recommended_route"] = None
+        response["recommended_route_id"] = None
+
+    if provider_status == STATUS_SAME_LOCATION:
+        response["same_location"] = True
 
     if details:
         response["details"] = details
@@ -89,10 +107,13 @@ def make_place_result(
         "display_name": display_name,
         "latitude": latitude,
         "longitude": longitude,
+        "lat": latitude,
+        "lng": longitude,
         "city": city,
         "area": area,
         "category": category,
         "provider_name": provider_name,
+        "provider": provider_name,
         "raw": raw or {},
     }
 
@@ -108,6 +129,7 @@ def make_place_search_response(
         "provider": provider,
         "provider_status": provider_status,
         "success": True,
+        "mock_fallback": False,
     }
 
 
@@ -127,6 +149,29 @@ def route_name_from_index(index: int) -> str:
         return f"Route {route_letters[index]} - Real Road Route"
 
     return f"Route {index + 1} - Real Road Route"
+
+
+def format_eta_text(minutes: float) -> str:
+    if minutes <= 0:
+        return "0 min"
+
+    if minutes < 60:
+        return f"{round(minutes)} min"
+
+    hours = int(minutes // 60)
+    remaining_minutes = round(minutes % 60)
+
+    if remaining_minutes == 0:
+        return f"{hours} hr"
+
+    return f"{hours} hr {remaining_minutes} min"
+
+
+def format_distance_text(distance_km: float) -> str:
+    if distance_km < 1:
+        return f"{round(distance_km * 1000)} m"
+
+    return f"{distance_km:.1f} km"
 
 
 def make_turn_step(
@@ -170,19 +215,45 @@ def make_route_result(
     route_id = route_id_from_index(route_index)
     route_name = route_name_from_index(route_index)
 
+    safe_eta = round(float(estimated_time_min or 0), 2)
+    safe_distance = round(float(distance_km or 0), 2)
+
+    # These are placeholder FlowSync fields for backend ranking to refine later.
+    # They are not fake geometry and do not affect road-following route data.
+    traffic_delay_min = 0
+    congestion_score = 0
+    assigned_users = 0
+    road_capacity = 0
+    load_ratio = 0
+    route_score = safe_eta
+
     return {
         "route_id": route_id,
         "route_name": route_name,
-        "estimated_time_min": round(float(estimated_time_min or 0), 2),
-        "estimated_time": round(float(estimated_time_min or 0), 2),
-        "distance_km": round(float(distance_km or 0), 2),
-        "traffic_delay_min": 0,
+        "estimated_time_min": safe_eta,
+        "estimated_time": safe_eta,
+        "eta_text": format_eta_text(safe_eta),
+        "distance_km": safe_distance,
+        "distance_text": format_distance_text(safe_distance),
+        "traffic_delay_min": traffic_delay_min,
         "congestion_level": "unknown",
-        "congestion_score": 0,
-        "assigned_users": 0,
-        "route_score": round(float(estimated_time_min or 0), 2),
+        "congestion_score": congestion_score,
+        "traffic_score": congestion_score,
+        "traffic_display": "Traffic data unavailable from ORS",
+        "assigned_users": assigned_users,
+        "road_capacity": road_capacity,
+        "load_ratio": load_ratio,
+        "load_status": "unknown",
+        "route_score": route_score,
+        "flowsync_score": route_score,
+        "is_recommended": route_index == 0,
+        "recommendation_reason": (
+            "Real OpenRouteService road route returned. "
+            "FlowSync backend can rank this with congestion/load data."
+        ),
         "provider_name": provider_name,
         "provider": provider_name,
+        "provider_status": STATUS_REAL_ROUTING_SUCCESS,
         "route_coordinates": route_coordinates,
         "coordinates": route_coordinates,
         "polyline": route_coordinates,
@@ -191,6 +262,8 @@ def make_route_result(
         "incidents": [],
         "alerts": [],
         "warnings": [],
+        "in_app_navigation": True,
+        "external_navigation_required": False,
         "real_geometry": True,
         "mock_fallback": False,
         "raw": raw or {},
@@ -217,5 +290,13 @@ def make_routes_response(
         "recommended_route": recommended_route,
         "routes": routes,
         "all_routes": routes,
+        "coordinate_count": len(recommended_route.get("route_coordinates", []))
+        if recommended_route
+        else 0,
+        "turn_by_turn_steps_count": len(
+            recommended_route.get("turn_by_turn_steps", [])
+        )
+        if recommended_route
+        else 0,
     }
     
