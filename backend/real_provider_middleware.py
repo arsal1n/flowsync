@@ -31,6 +31,31 @@ def _provider_enabled() -> bool:
     return provider in {"openrouteservice", "ors", "real"} and bool(_ors_key())
 
 
+def _real_provider_required() -> bool:
+    required = str(os.getenv("FLOWSYNC_REQUIRE_REAL_PROVIDER", "")).lower().strip()
+    fallback = str(os.getenv("FLOWSYNC_MOCK_FALLBACK", "")).lower().strip()
+
+    return required in {"1", "true", "yes", "on"} or fallback in {"0", "false", "no", "off"}
+
+
+def _real_provider_error(endpoint: str, message: str, status_code: int = 503) -> JSONResponse:
+    return JSONResponse(
+        {
+            "error": "real_provider_required",
+            "endpoint": endpoint,
+            "message": message,
+            "provider": "openrouteservice",
+            "provider_status": "real_provider_unavailable",
+            "real_geometry": False,
+            "mock_fallback": False,
+            "traffic_provider": "none",
+            "traffic_provider_status": "no_real_traffic_provider",
+            "traffic_is_live": False,
+        },
+        status_code=status_code,
+    )
+
+
 def _ors_key() -> str:
     return (
         os.getenv("FLOWSYNC_ORS_API_KEY")
@@ -519,19 +544,46 @@ async def _restore_body_and_continue(request: Request, call_next, body_bytes: by
     return await call_next(request)
 
 
+
 def register_real_provider_middleware(app):
     @app.middleware("http")
     async def real_provider_middleware(request: Request, call_next):
         path = request.url.path
         method = request.method.upper()
 
+        is_real_maps_endpoint = (
+            (method == "GET" and path == "/api/locations/search")
+            or (method == "POST" and path == "/api/routes/recommend")
+        )
+
         if not _provider_enabled():
+            if is_real_maps_endpoint and _real_provider_required():
+                if not _ors_key():
+                    return _real_provider_error(
+                        path,
+                        "OpenRouteService API key is missing. Set FLOWSYNC_ORS_API_KEY in Render/local env.",
+                        503,
+                    )
+
+                return _real_provider_error(
+                    path,
+                    "Real routing provider is not enabled. Set FLOWSYNC_ROUTING_PROVIDER=openrouteservice.",
+                    503,
+                )
+
             return await call_next(request)
 
         if method == "GET" and path == "/api/locations/search":
             try:
                 return await _handle_real_location_search(request)
-            except Exception:
+            except Exception as exc:
+                if _real_provider_required():
+                    return _real_provider_error(
+                        path,
+                        f"Real geocoding provider failed: {str(exc)}",
+                        502,
+                    )
+
                 return await call_next(request)
 
         if method == "POST" and path == "/api/routes/recommend":
@@ -548,7 +600,14 @@ def register_real_provider_middleware(app):
                 request._receive = receive
                 return await _handle_real_route_recommend(request)
 
-            except Exception:
+            except Exception as exc:
+                if _real_provider_required():
+                    return _real_provider_error(
+                        path,
+                        f"Real routing provider failed: {str(exc)}",
+                        502,
+                    )
+
                 return await _restore_body_and_continue(request, call_next, body_bytes)
 
         return await call_next(request)
