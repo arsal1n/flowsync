@@ -856,3 +856,10 @@ register_mobile_v3_polish(app)
 from real_provider_middleware import register_real_provider_middleware
 
 register_real_provider_middleware(app)
+
+# --- FlowSync real routing persistence middleware ---
+# Persists real route options, coordinates, steps, selected sessions, progress, and summaries.
+
+from real_routing_persistence import register_real_routing_persistence
+
+register_real_routing_persistence(app)
