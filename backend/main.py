@@ -1052,3 +1052,9 @@ async def flowsync_clean_provider_route_errors(request, call_next):
 from geoapify_places_middleware import register_geoapify_places_middleware
 
 register_geoapify_places_middleware(app)
+
+# --- FlowSync coordinate priority middleware ---
+# Ensures GPS/current-location coordinates are used before geocoding text labels.
+from coordinate_priority_middleware import register_coordinate_priority_middleware
+
+register_coordinate_priority_middleware(app)
