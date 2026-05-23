@@ -1058,3 +1058,10 @@ register_geoapify_places_middleware(app)
 from coordinate_priority_middleware import register_coordinate_priority_middleware
 
 register_coordinate_priority_middleware(app)
+
+# --- FlowSync coordinate geometry guard middleware ---
+# Final guard: if returned geometry does not match request coordinates,
+# rebuild the ORS route directly from start_lat/start_lng to destination_lat/destination_lng.
+from coordinate_geometry_guard_middleware import register_coordinate_geometry_guard_middleware
+
+register_coordinate_geometry_guard_middleware(app)
