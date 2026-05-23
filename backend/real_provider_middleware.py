@@ -183,16 +183,244 @@ def _location_from_feature(feature: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+
+PINNED_UAE_REAL_PLACES = [
+    {
+        "place_id": "flowsync-pinned-manipal-university-dubai",
+        "name": "Manipal University Dubai",
+        "display_name": "Manipal University Dubai, Dubai International Academic City, Dubai, UAE",
+        "address": "Dubai International Academic City",
+        "city": "Dubai",
+        "area": "Academic City",
+        "category": "University",
+        "provider_name": "flowsync_verified_place",
+        "provider": "flowsync_verified_place",
+        "provider_status": "verified_location_match",
+        "latitude": 25.1256,
+        "longitude": 55.4209,
+        "lat": 25.1256,
+        "lng": 55.4209,
+    },
+    {
+        "place_id": "flowsync-pinned-dubai-marina",
+        "name": "Dubai Marina",
+        "display_name": "Dubai Marina, Dubai, UAE",
+        "address": "Dubai Marina",
+        "city": "Dubai",
+        "area": "Dubai Marina",
+        "category": "District",
+        "provider_name": "flowsync_verified_place",
+        "provider": "flowsync_verified_place",
+        "provider_status": "verified_location_match",
+        "latitude": 25.0800,
+        "longitude": 55.1400,
+        "lat": 25.0800,
+        "lng": 55.1400,
+    },
+    {
+        "place_id": "flowsync-pinned-dubai-mall",
+        "name": "Dubai Mall",
+        "display_name": "Dubai Mall, Downtown Dubai, Dubai, UAE",
+        "address": "Downtown Dubai",
+        "city": "Dubai",
+        "area": "Downtown Dubai",
+        "category": "Mall",
+        "provider_name": "flowsync_verified_place",
+        "provider": "flowsync_verified_place",
+        "provider_status": "verified_location_match",
+        "latitude": 25.1972,
+        "longitude": 55.2744,
+        "lat": 25.1972,
+        "lng": 55.2744,
+    },
+]
+
+BROAD_LOCATION_CATEGORIES = {
+    "country",
+    "macrocounty",
+    "region",
+    "dependency",
+    "continent",
+}
+
+
+def _query_tokens(value: Any) -> List[str]:
+    return [token for token in _clean_text(value).split() if len(token) >= 2]
+
+
+def _is_broad_query(query: str) -> bool:
+    clean_query = _clean_text(query)
+    return clean_query in {
+        "uae",
+        "united arab emirates",
+        "dubai",
+        "sharjah",
+        "abu dhabi",
+        "ajman",
+    }
+
+
+def _quality_location_payload(location: Dict[str, Any]) -> Dict[str, Any]:
+    latitude = _number(location.get("latitude", location.get("lat")))
+    longitude = _number(location.get("longitude", location.get("lng", location.get("lon"))))
+
+    name = (
+        location.get("name")
+        or location.get("display_name")
+        or location.get("address")
+        or "UAE location"
+    )
+
+    display_name = (
+        location.get("display_name")
+        or location.get("address")
+        or name
+    )
+
+    provider_name = (
+        location.get("provider_name")
+        or location.get("provider")
+        or "openrouteservice"
+    )
+
+    return {
+        "place_id": location.get("place_id") or location.get("id") or f"{provider_name}:{latitude},{longitude}",
+        "name": name,
+        "display_name": display_name,
+        "address": location.get("address") or display_name,
+        "city": location.get("city") or "UAE",
+        "area": location.get("area") or location.get("district") or "",
+        "category": location.get("category") or location.get("type") or "place",
+        "type": location.get("type") or location.get("category") or "place",
+        "provider_name": provider_name,
+        "provider": location.get("provider") or provider_name,
+        "provider_status": location.get("provider_status") or "real_geocoding_success",
+        **_coordinate_payload(latitude, longitude),
+    }
+
+
+def _is_broad_location_result(location: Dict[str, Any], query: str) -> bool:
+    if _is_broad_query(query):
+        return False
+
+    clean_query = _clean_text(query)
+    name = _clean_text(location.get("name"))
+    display_name = _clean_text(location.get("display_name", location.get("address")))
+    category = _clean_text(location.get("category", location.get("type")))
+
+    if category in BROAD_LOCATION_CATEGORIES:
+        return True
+
+    if clean_query and "united arab emirates" in {name, display_name}:
+        return True
+
+    if clean_query and name in {"uae", "united arab emirates"}:
+        return True
+
+    return False
+
+
+def _pinned_place_matches(query: str, limit: int = 10) -> List[Dict[str, Any]]:
+    tokens = _query_tokens(query)
+
+    if not tokens:
+        return []
+
+    matches = []
+
+    for item in PINNED_UAE_REAL_PLACES:
+        haystack = _clean_text(
+            f"{item.get('name')} {item.get('display_name')} {item.get('address')} {item.get('city')} {item.get('area')} {item.get('category')}"
+        )
+
+        score = 0
+
+        for token in tokens:
+            if token in haystack:
+                score += 10
+
+        if _clean_text(query) in haystack:
+            score += 50
+
+        if score > 0:
+            result = dict(item)
+            result["_score"] = score
+            matches.append(result)
+
+    matches.sort(key=lambda item: item.get("_score", 0), reverse=True)
+
+    cleaned = []
+
+    for item in matches[:limit]:
+        item.pop("_score", None)
+        cleaned.append(_quality_location_payload(item))
+
+    return cleaned
+
+
+def _rank_location_results(query: str, locations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    tokens = _query_tokens(query)
+    ranked = []
+
+    for location in locations:
+        payload = _quality_location_payload(location)
+
+        if _is_broad_location_result(payload, query):
+            continue
+
+        haystack = _clean_text(
+            f"{payload.get('name')} {payload.get('display_name')} {payload.get('address')} {payload.get('city')} {payload.get('area')} {payload.get('category')}"
+        )
+
+        score = 0
+
+        for token in tokens:
+            if token in haystack:
+                score += 10
+
+        if _clean_text(query) and _clean_text(query) in haystack:
+            score += 50
+
+        if payload.get("provider_name") == "flowsync_verified_place":
+            score += 100
+
+        payload["_score"] = score
+        ranked.append(payload)
+
+    ranked.sort(key=lambda item: item.get("_score", 0), reverse=True)
+
+    unique = []
+    seen = set()
+
+    for item in ranked:
+        key = (
+            _clean_text(item.get("name")),
+            round(_number(item.get("latitude")), 5),
+            round(_number(item.get("longitude")), 5),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        item.pop("_score", None)
+        unique.append(item)
+
+    return unique
+
+
 def _geocode_place(value: Any, limit: int = 1) -> List[Dict[str, Any]]:
     inline = _parse_inline_coordinate(value)
 
     if inline:
-        return [inline]
+        return [_quality_location_payload(inline)]
 
     query = str(value or "").strip()
 
     if not query:
         return []
+
+    pinned_matches = _pinned_place_matches(query, limit=limit)
 
     search_text = query
 
@@ -204,14 +432,18 @@ def _geocode_place(value: Any, limit: int = 1) -> List[Dict[str, Any]]:
             "api_key": _ors_key(),
             "text": search_text,
             "boundary.country": "AE",
-            "size": str(limit),
+            "size": str(max(limit * 3, 10)),
         }
     )
 
     payload = _http_get_json(f"{ORS_GEOCODE_URL}?{params}")
     features = payload.get("features") or []
+    provider_matches = [_location_from_feature(feature) for feature in features]
 
-    return [_location_from_feature(feature) for feature in features[:limit]]
+    combined = pinned_matches + provider_matches
+    ranked = _rank_location_results(query, combined)
+
+    return ranked[:limit]
 
 
 def _coords_for_ors(location: Dict[str, Any]) -> List[float]:
@@ -402,7 +634,10 @@ async def _handle_real_location_search(request: Request) -> JSONResponse:
 
     limit = int(_number(request.query_params.get("limit"), 10))
 
-    results = _geocode_place(query, limit=limit) if query else []
+    if not query:
+        results = []
+    else:
+        results = _geocode_place(query, limit=limit)
 
     return JSONResponse(
         {
@@ -411,10 +646,11 @@ async def _handle_real_location_search(request: Request) -> JSONResponse:
             "results": results,
             "locations": results,
             "no_exact_match": len(results) == 0,
-            "popular_places": [],
+            "popular_places": [_quality_location_payload(item) for item in PINNED_UAE_REAL_PLACES],
             "provider": "openrouteservice",
-            "provider_status": "real_geocoding_success",
+            "provider_status": "real_geocoding_success" if results else "real_geocoding_no_match",
             "mock_fallback": False,
+            "message": "Results found" if results else "No matching location found.",
         }
     )
 
