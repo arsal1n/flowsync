@@ -1128,3 +1128,61 @@ ON route_options(route_public_id);
 
 CREATE INDEX IF NOT EXISTS idx_trip_sessions_selected_route_public_id
 ON trip_sessions(selected_route_public_id);
+-- =========================================================
+-- FINAL REAL ROUTING / MOBILE NAVIGATION ACCEPTANCE SUPPORT
+-- =========================================================
+
+-- Location aliases for search matching:
+-- Example: Manipal, Manipal Dubai, Academic City
+ALTER TABLE locations ADD COLUMN aliases TEXT;
+
+-- Road/street name for turn-by-turn navigation steps
+ALTER TABLE route_steps ADD COLUMN street_name TEXT;
+
+-- Closest route point for GPS matching/progress calculation
+ALTER TABLE navigation_progress ADD COLUMN closest_route_point_index INTEGER;
+
+-- Cache expiry/raw provider refresh support
+ALTER TABLE alerts ADD COLUMN expires_at TEXT;
+ALTER TABLE road_incidents ADD COLUMN expires_at TEXT;
+
+-- Traffic scoring fields for route scoring
+ALTER TABLE traffic_snapshots ADD COLUMN congestion_score REAL;
+ALTER TABLE traffic_snapshots ADD COLUMN delay_min REAL DEFAULT 0;
+
+-- Waze-style user reports
+CREATE TABLE IF NOT EXISTS user_reports (
+    report_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type TEXT NOT NULL,
+    description TEXT,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    road_segment_id INTEGER,
+    route_id INTEGER,
+    reported_by_user_id INTEGER,
+    status TEXT DEFAULT 'active',
+    confirmation_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    FOREIGN KEY (road_segment_id) REFERENCES road_segments(road_segment_id),
+    FOREIGN KEY (route_id) REFERENCES route_options(route_id),
+    FOREIGN KEY (reported_by_user_id) REFERENCES users(user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_report_confirmations (
+    confirmation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    confirmation_type TEXT DEFAULT 'upvote',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (report_id) REFERENCES user_reports(report_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    UNIQUE(report_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_reports_type ON user_reports(report_type);
+CREATE INDEX IF NOT EXISTS idx_user_reports_status ON user_reports(status);
+CREATE INDEX IF NOT EXISTS idx_user_reports_location ON user_reports(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_user_reports_route_id ON user_reports(route_id);
+CREATE INDEX IF NOT EXISTS idx_user_report_confirmations_report_id ON user_report_confirmations(report_id);
