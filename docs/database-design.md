@@ -611,3 +611,24 @@ backend/database/sample_queries.sql
 docs/database-design.md
 docs/database-progress.md
 ```
+---
+
+## Real Routing and Mobile Navigation Support
+
+The database now supports the final mobile routing contract needed by the backend, maps, and mobile frontend.
+
+### Location Search Support
+
+The `locations` table supports mobile search response fields:
+
+```text
+name
+display_name
+latitude
+longitude
+city
+area
+category
+provider_name
+external_place_id
+search_keywords
