@@ -863,3 +863,185 @@ register_real_provider_middleware(app)
 from real_routing_persistence import register_real_routing_persistence
 
 register_real_routing_persistence(app)
+
+# --- FlowSync clean real-provider route errors ---
+# Converts strict OpenRouteService failures into frontend-friendly JSON.
+# This prevents random/mock fallback while giving mobile a clean status to display.
+
+import json as _flowsync_clean_provider_json
+from starlette.responses import JSONResponse as _FlowSyncCleanProviderJSONResponse
+from starlette.responses import Response as _FlowSyncCleanProviderResponse
+
+
+def _flowsync_clean_provider_classify_error(error_text: str):
+    text = str(error_text or "").lower()
+
+    if "rate" in text or "429" in text:
+        return {
+            "provider_status": "rate_limited",
+            "error": "rate_limited",
+            "status_code": 429,
+            "message": "Routing provider rate limit reached. Please try again later.",
+        }
+
+    if (
+        "api key" in text
+        or "key missing" in text
+        or "missing key" in text
+        or "unauthorized" in text
+        or "forbidden" in text
+        or "disallowed" in text
+    ):
+        return {
+            "provider_status": "provider_api_key_missing",
+            "error": "provider_api_key_missing",
+            "status_code": 503,
+            "message": "Real routing provider key is missing, invalid, or not allowed.",
+        }
+
+    if (
+        "invalid coordinate" in text
+        or "invalid coordinates" in text
+        or "latitude" in text and "invalid" in text
+        or "longitude" in text and "invalid" in text
+    ):
+        return {
+            "provider_status": "invalid_coordinates",
+            "error": "invalid_coordinates",
+            "status_code": 422,
+            "message": "Invalid start or destination coordinates.",
+        }
+
+    if (
+        "geocode" in text
+        or "geocoding" in text
+        or "place" in text
+        or "location" in text
+        or "could not find" in text
+        or "not found" in text
+        or "no match" in text
+        or "no coordinates" in text
+    ):
+        return {
+            "provider_status": "provider_no_places_found",
+            "error": "location_not_found",
+            "status_code": 404,
+            "message": "Start or destination could not be found. Please select a valid location suggestion.",
+        }
+
+    if "no route" in text or "route not found" in text or "no routes" in text:
+        return {
+            "provider_status": "provider_no_routes_found",
+            "error": "route_not_found",
+            "status_code": 404,
+            "message": "No real road route could be found between the selected locations.",
+        }
+
+    return {
+        "provider_status": "provider_request_failed",
+        "error": "provider_request_failed",
+        "status_code": 502,
+        "message": "Real routing provider failed. Please try again with a valid location suggestion.",
+    }
+
+
+async def _flowsync_clean_provider_collect_body(response):
+    chunks = []
+
+    async for chunk in response.body_iterator:
+        if isinstance(chunk, bytes):
+            chunks.append(chunk)
+        else:
+            chunks.append(str(chunk).encode("utf-8"))
+
+    return b"".join(chunks)
+
+
+def _flowsync_clean_provider_clone_response(response, body_bytes: bytes):
+    headers = dict(response.headers)
+    headers.pop("content-length", None)
+
+    return _FlowSyncCleanProviderResponse(
+        content=body_bytes,
+        status_code=response.status_code,
+        headers=headers,
+        media_type=response.media_type,
+        background=response.background,
+    )
+
+
+@app.middleware("http")
+async def flowsync_clean_provider_route_errors(request, call_next):
+    method = request.method.upper()
+    path = request.url.path
+
+    if method != "POST" or path != "/api/routes/recommend":
+        return await call_next(request)
+
+    body_bytes = await request.body()
+
+    try:
+        request_payload = _flowsync_clean_provider_json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+        if not isinstance(request_payload, dict):
+            request_payload = {}
+    except Exception:
+        request_payload = {}
+
+    async def receive():
+        return {
+            "type": "http.request",
+            "body": body_bytes,
+            "more_body": False,
+        }
+
+    request._receive = receive
+
+    response = await call_next(request)
+
+    if response.status_code not in {400, 404, 422, 500, 502, 503}:
+        return response
+
+    response_body = await _flowsync_clean_provider_collect_body(response)
+
+    try:
+        response_payload = _flowsync_clean_provider_json.loads(response_body.decode("utf-8"))
+    except Exception:
+        response_payload = {}
+
+    error_text = " ".join(
+        [
+            response_body.decode("utf-8", errors="ignore"),
+            _flowsync_clean_provider_json.dumps(response_payload, default=str),
+        ]
+    )
+
+    if response.status_code in {502, 503}:
+        classification = _flowsync_clean_provider_classify_error(error_text)
+
+        return _FlowSyncCleanProviderJSONResponse(
+            status_code=classification["status_code"],
+            content={
+                "success": False,
+                "provider": "openrouteservice",
+                "provider_status": classification["provider_status"],
+                "routing_provider": "openrouteservice",
+                "routing_provider_status": classification["provider_status"],
+                "error": classification["error"],
+                "message": classification["message"],
+                "start_location": request_payload.get("start_location"),
+                "destination": request_payload.get("destination"),
+                "same_location": False,
+                "no_route_needed": False,
+                "recommended_route": None,
+                "recommended_route_id": None,
+                "routes": [],
+                "all_routes": [],
+                "route_options": [],
+                "real_geometry": False,
+                "mock_fallback": False,
+                "in_app_navigation": False,
+                "external_navigation_required": False,
+            },
+        )
+
+    return _flowsync_clean_provider_clone_response(response, response_body)
