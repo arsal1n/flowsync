@@ -720,3 +720,256 @@ INSERT OR IGNORE INTO locations
 (location_id, area_id, category_id, name, address, latitude, longitude, external_place_id, provider_name, search_keywords, popularity_score, status)
 VALUES
 (161, 16, 4, 'Ras Al Khaimah City', 'Ras Al Khaimah, UAE', 25.8007, 55.9762, 'seed_ras_al_khaimah_city', 'seed', 'ras al khaimah,rak,city,uae,northern emirates', 78, 'active');
+-- =========================================================
+-- REAL ROUTING + MOBILE NAVIGATION SEED SUPPORT
+-- =========================================================
+
+UPDATE locations
+SET
+    display_name = COALESCE(display_name, name || ', ' || COALESCE(address, 'UAE')),
+    city = COALESCE(
+        city,
+        CASE
+            WHEN LOWER(name) LIKE '%sharjah%' OR LOWER(address) LIKE '%sharjah%' THEN 'Sharjah'
+            WHEN LOWER(name) LIKE '%abu dhabi%' OR LOWER(address) LIKE '%abu dhabi%' OR LOWER(name) LIKE '%yas%' THEN 'Abu Dhabi'
+            WHEN LOWER(name) LIKE '%ajman%' OR LOWER(address) LIKE '%ajman%' THEN 'Ajman'
+            WHEN LOWER(name) LIKE '%fujairah%' OR LOWER(address) LIKE '%fujairah%' THEN 'Fujairah'
+            WHEN LOWER(name) LIKE '%ras al khaimah%' OR LOWER(address) LIKE '%ras al khaimah%' THEN 'Ras Al Khaimah'
+            ELSE 'Dubai'
+        END
+    ),
+    area = COALESCE(
+        area,
+        (SELECT areas.name FROM areas WHERE areas.area_id = locations.area_id),
+        name
+    ),
+    category = COALESCE(
+        category,
+        (SELECT location_categories.category_name FROM location_categories WHERE location_categories.category_id = locations.category_id),
+        'place'
+    );
+
+UPDATE geocoding_cache
+SET
+    provider_place_id = COALESCE(provider_place_id, external_place_id),
+    raw_response = COALESCE(raw_response, response_json);
+
+UPDATE route_options
+SET route_public_id =
+    CASE route_id
+        WHEN 1 THEN 'ROUTE-A'
+        WHEN 2 THEN 'ROUTE-B'
+        WHEN 3 THEN 'ROUTE-C'
+        WHEN 4 THEN 'ROUTE-A-AIRPORT'
+        WHEN 5 THEN 'ROUTE-B-AIRPORT'
+        WHEN 6 THEN 'ROUTE-A-SHARJAH'
+        WHEN 7 THEN 'ROUTE-D'
+        ELSE 'ROUTE-' || route_id
+    END;
+
+UPDATE route_options
+SET
+    estimated_time_min = estimated_time_minutes,
+    eta_text = CAST(estimated_time_minutes AS INTEGER) || ' min',
+    distance_text = distance_km || ' km',
+    traffic_delay_min =
+        CASE
+            WHEN congestion_score >= 8 THEN 10
+            WHEN congestion_score >= 6 THEN 6
+            WHEN congestion_score >= 4 THEN 4
+            ELSE 2
+        END,
+    traffic_score = congestion_score,
+    traffic_display =
+        CASE
+            WHEN congestion_score >= 8 THEN 'Heavy traffic • ' || congestion_score || '/10'
+            WHEN congestion_score >= 6 THEN 'Moderate traffic • ' || congestion_score || '/10'
+            WHEN congestion_score >= 4 THEN 'Medium traffic • ' || congestion_score || '/10'
+            ELSE 'Light traffic • ' || congestion_score || '/10'
+        END,
+    flowsync_score = route_score,
+    load_ratio =
+        CASE
+            WHEN road_capacity IS NOT NULL AND road_capacity > 0
+            THEN ROUND((1.0 * assigned_users) / road_capacity, 2)
+            ELSE 0
+        END,
+    load_status =
+        CASE
+            WHEN road_capacity IS NOT NULL AND road_capacity > 0 AND (1.0 * assigned_users) / road_capacity >= 0.75 THEN 'high'
+            WHEN road_capacity IS NOT NULL AND road_capacity > 0 AND (1.0 * assigned_users) / road_capacity >= 0.45 THEN 'medium'
+            ELSE 'low'
+        END,
+    recommendation_reason =
+        CASE
+            WHEN is_recommended = 1 THEN 'Recommended by FlowSync based on ETA, congestion, route load, incidents, and road capacity.'
+            ELSE 'Alternative route option available for user selection.'
+        END,
+    in_app_navigation = 1,
+    external_navigation_required = 0;
+
+UPDATE route_steps
+SET
+    step_index = step_number - 1,
+    distance_m = distance_meters,
+    duration_min =
+        CASE
+            WHEN duration_seconds IS NOT NULL THEN ROUND(duration_seconds / 60.0, 1)
+            ELSE NULL
+        END,
+    maneuver = maneuver_type;
+
+-- Add mobile demo Route D for selected-route testing.
+INSERT OR IGNORE INTO route_options
+(
+    route_id,
+    trip_request_id,
+    route_public_id,
+    route_name,
+    provider_name,
+    external_route_id,
+    estimated_time_minutes,
+    estimated_time_min,
+    eta_text,
+    distance_km,
+    distance_text,
+    traffic_delay_min,
+    congestion_score,
+    traffic_score,
+    traffic_display,
+    route_score,
+    flowsync_score,
+    assigned_users,
+    road_capacity,
+    load_ratio,
+    load_status,
+    recommendation_reason,
+    geometry_json,
+    is_recommended,
+    in_app_navigation,
+    external_navigation_required,
+    status
+)
+VALUES
+(
+    8,
+    1,
+    'ROUTE-D',
+    'Route D - Emirates Road Alternative',
+    'seed',
+    'route_d_emirates_alt',
+    31,
+    31,
+    '31 min',
+    30.4,
+    '30.4 km',
+    3,
+    3,
+    3,
+    'Light traffic • 3/10',
+    24.7,
+    24.7,
+    6,
+    22,
+    0.27,
+    'low',
+    'Route D selected as a balanced alternative with lower congestion and lower route load.',
+    '{"type":"LineString","source":"seed","note":"Detailed points stored in route_coordinates"}',
+    0,
+    1,
+    0,
+    'available'
+);
+
+INSERT OR IGNORE INTO route_steps
+(
+    route_step_id,
+    route_id,
+    step_number,
+    step_index,
+    instruction,
+    distance_meters,
+    distance_m,
+    duration_seconds,
+    duration_min,
+    latitude,
+    longitude,
+    maneuver_type,
+    maneuver
+)
+VALUES
+(101, 8, 1, 0, 'Start from Dubai Mall and head toward the main road exit.', 1200, 1200, 180, 3, 25.1972, 55.2744, 'depart', 'depart'),
+(102, 8, 2, 1, 'Continue toward Al Khail Road alternative corridor.', 5200, 5200, 420, 7, 25.1850, 55.2770, 'continue', 'continue'),
+(103, 8, 3, 2, 'Follow the alternative corridor toward Dubai Marina.', 14500, 14500, 960, 16, 25.1450, 55.2350, 'continue', 'continue'),
+(104, 8, 4, 3, 'Take the Dubai Marina exit.', 8200, 8200, 420, 7, 25.1000, 55.1700, 'exit', 'exit'),
+(105, 8, 5, 4, 'Arrive at Dubai Marina.', 1300, 1300, 120, 2, 25.0800, 55.1400, 'arrive', 'arrive');
+
+INSERT OR IGNORE INTO route_coordinates
+(route_id, route_public_id, point_index, latitude, longitude, distance_from_start_m, provider_name)
+VALUES
+(8, 'ROUTE-D', 1, 25.1972, 55.2744, 0, 'seed'),
+(8, 'ROUTE-D', 2, 25.1900, 55.2700, 1500, 'seed'),
+(8, 'ROUTE-D', 3, 25.1850, 55.2770, 3500, 'seed'),
+(8, 'ROUTE-D', 4, 25.1700, 55.2600, 6200, 'seed'),
+(8, 'ROUTE-D', 5, 25.1450, 55.2350, 10500, 'seed'),
+(8, 'ROUTE-D', 6, 25.1300, 55.2100, 15000, 'seed'),
+(8, 'ROUTE-D', 7, 25.1100, 55.1850, 20500, 'seed'),
+(8, 'ROUTE-D', 8, 25.0950, 55.1600, 25500, 'seed'),
+(8, 'ROUTE-D', 9, 25.0800, 55.1400, 30400, 'seed');
+
+INSERT OR IGNORE INTO route_scores
+(route_score_id, route_id, time_score, distance_score, congestion_score, load_score, incident_score, eco_score, final_score, scoring_model_version)
+VALUES
+(8, 8, 31, 30.4, 3, 2, 0, 4, 24.7, 'v1');
+
+INSERT OR IGNORE INTO route_loads
+(route_load_id, route_id, active_users, road_capacity, load_percentage, load_status)
+VALUES
+(8, 8, 6, 22, 27.0, 'low');
+
+INSERT OR IGNORE INTO route_assignments
+(assignment_id, trip_request_id, user_id, route_id, assignment_reason, status)
+VALUES
+(8, 1, 1, 8, 'Route D selected by user and stored as selected route for mobile navigation.', 'assigned');
+
+INSERT OR IGNORE INTO trip_sessions
+(session_id, trip_request_id, user_id, assignment_id, selected_route_id, selected_route_public_id, status, current_step_index, started_at, ended_at)
+VALUES
+(8, 1, 1, 8, 8, 'ROUTE-D', 'active', 0, CURRENT_TIMESTAMP, NULL);
+
+INSERT OR IGNORE INTO navigation_progress
+(
+    navigation_progress_id,
+    session_id,
+    current_step_index,
+    latitude,
+    longitude,
+    speed_kmh,
+    remaining_distance_km,
+    remaining_time_minutes,
+    remaining_time_min,
+    progress_percent,
+    progress_percentage,
+    event_type
+)
+VALUES
+(8, 8, 0, 25.1972, 55.2744, 0, 30.4, 31, 31, 0, 0, 'navigation_started');
+
+UPDATE alerts
+SET title = COALESCE(title, alert_type || ' alert');
+
+UPDATE road_closures
+SET
+    title = COALESCE(title, 'Road closure update'),
+    severity = COALESCE(severity, 'medium'),
+    latitude = COALESCE(latitude, 25.2048),
+    longitude = COALESCE(longitude, 55.2708);
+    -- Backfill selected route public IDs for older demo trip sessions.
+UPDATE trip_sessions
+SET selected_route_public_id = (
+    SELECT route_options.route_public_id
+    FROM route_options
+    WHERE route_options.route_id = trip_sessions.selected_route_id
+)
+WHERE selected_route_public_id IS NULL
+  AND selected_route_id IS NOT NULL;

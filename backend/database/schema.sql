@@ -1060,3 +1060,71 @@ CREATE INDEX IF NOT EXISTS idx_api_logs_endpoint ON api_logs(endpoint);
 CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity);
 CREATE INDEX IF NOT EXISTS idx_error_logs_resolved ON error_logs(resolved);
 CREATE INDEX IF NOT EXISTS idx_feature_flags_key ON feature_flags(flag_key);
+-- =========================================================
+-- REAL ROUTING + MOBILE NAVIGATION SUPPORT ADD-ONS
+-- Added for mobile real routing provider integration.
+-- =========================================================
+
+ALTER TABLE locations ADD COLUMN display_name TEXT;
+ALTER TABLE locations ADD COLUMN city TEXT;
+ALTER TABLE locations ADD COLUMN area TEXT;
+ALTER TABLE locations ADD COLUMN category TEXT;
+
+ALTER TABLE geocoding_cache ADD COLUMN provider_place_id TEXT;
+ALTER TABLE geocoding_cache ADD COLUMN raw_response TEXT;
+
+ALTER TABLE route_options ADD COLUMN route_public_id TEXT;
+ALTER TABLE route_options ADD COLUMN estimated_time_min REAL;
+ALTER TABLE route_options ADD COLUMN eta_text TEXT;
+ALTER TABLE route_options ADD COLUMN distance_text TEXT;
+ALTER TABLE route_options ADD COLUMN traffic_delay_min REAL DEFAULT 0;
+ALTER TABLE route_options ADD COLUMN traffic_score REAL DEFAULT 0;
+ALTER TABLE route_options ADD COLUMN traffic_display TEXT;
+ALTER TABLE route_options ADD COLUMN flowsync_score REAL DEFAULT 0;
+ALTER TABLE route_options ADD COLUMN load_ratio REAL DEFAULT 0;
+ALTER TABLE route_options ADD COLUMN load_status TEXT DEFAULT 'normal';
+ALTER TABLE route_options ADD COLUMN recommendation_reason TEXT;
+ALTER TABLE route_options ADD COLUMN in_app_navigation INTEGER DEFAULT 1;
+ALTER TABLE route_options ADD COLUMN external_navigation_required INTEGER DEFAULT 0;
+
+ALTER TABLE route_steps ADD COLUMN step_index INTEGER;
+ALTER TABLE route_steps ADD COLUMN distance_m REAL;
+ALTER TABLE route_steps ADD COLUMN duration_min REAL;
+ALTER TABLE route_steps ADD COLUMN maneuver TEXT;
+
+ALTER TABLE trip_sessions ADD COLUMN selected_route_public_id TEXT;
+
+ALTER TABLE alerts ADD COLUMN title TEXT;
+
+ALTER TABLE road_closures ADD COLUMN title TEXT;
+ALTER TABLE road_closures ADD COLUMN severity TEXT DEFAULT 'medium';
+ALTER TABLE road_closures ADD COLUMN latitude REAL;
+ALTER TABLE road_closures ADD COLUMN longitude REAL;
+ALTER TABLE road_closures ADD COLUMN affected_route_id INTEGER;
+
+CREATE TABLE IF NOT EXISTS route_coordinates (
+    route_coordinate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    route_id INTEGER NOT NULL,
+    route_public_id TEXT,
+    point_index INTEGER NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    distance_from_start_m REAL,
+    provider_name TEXT DEFAULT 'seed',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (route_id) REFERENCES route_options(route_id),
+    UNIQUE(route_id, point_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_route_coordinates_route_id
+ON route_coordinates(route_id);
+
+CREATE INDEX IF NOT EXISTS idx_route_coordinates_public_id
+ON route_coordinates(route_public_id);
+
+CREATE INDEX IF NOT EXISTS idx_route_options_public_id
+ON route_options(route_public_id);
+
+CREATE INDEX IF NOT EXISTS idx_trip_sessions_selected_route_public_id
+ON trip_sessions(selected_route_public_id);

@@ -458,3 +458,11 @@ Next step:
 ```text
 Commit database-final branch and create PR for team review.
 ```                                                                   
+---
+
+## Real Routing Support Update
+
+Branch:
+
+```text
+database-real-routing-support

@@ -136,3 +136,102 @@ SELECT
 FROM traffic_snapshots
 JOIN road_segments ON traffic_snapshots.road_segment_id = road_segments.road_segment_id
 ORDER BY traffic_snapshots.congestion_level DESC;
+-- =========================================================
+-- REAL ROUTING / MOBILE NAVIGATION SUPPORT QUERIES
+-- =========================================================
+
+-- 11. Mobile location search fields
+SELECT
+    location_id,
+    name,
+    display_name,
+    latitude,
+    longitude,
+    city,
+    area,
+    category,
+    provider_name,
+    external_place_id,
+    search_keywords
+FROM locations
+WHERE LOWER(name) LIKE LOWER('%Dubai Marina%')
+   OR LOWER(search_keywords) LIKE LOWER('%Dubai Marina%');
+
+-- 12. Mobile route card contract
+SELECT
+    route_id,
+    route_public_id,
+    route_name,
+    estimated_time_min,
+    eta_text,
+    distance_km,
+    distance_text,
+    traffic_delay_min,
+    congestion_score,
+    traffic_display,
+    flowsync_score,
+    assigned_users,
+    road_capacity,
+    load_ratio,
+    load_status,
+    recommendation_reason,
+    is_recommended,
+    in_app_navigation,
+    external_navigation_required
+FROM route_options
+WHERE trip_request_id = 1
+ORDER BY flowsync_score ASC;
+
+-- 13. Route coordinates for map polyline
+SELECT
+    route_public_id,
+    point_index,
+    latitude,
+    longitude,
+    distance_from_start_m
+FROM route_coordinates
+WHERE route_public_id = 'ROUTE-D'
+ORDER BY point_index ASC;
+
+-- 14. Turn-by-turn steps for selected route
+SELECT
+    route_id,
+    step_index,
+    instruction,
+    distance_m,
+    duration_min,
+    maneuver,
+    latitude,
+    longitude
+FROM route_steps
+WHERE route_id = 8
+ORDER BY step_index ASC;
+
+-- 15. Selected route stored in trip session
+SELECT
+    trip_sessions.session_id,
+    trip_sessions.trip_request_id,
+    trip_sessions.selected_route_id,
+    trip_sessions.selected_route_public_id,
+    route_options.route_name,
+    trip_sessions.status,
+    trip_sessions.current_step_index
+FROM trip_sessions
+JOIN route_options ON trip_sessions.selected_route_id = route_options.route_id
+WHERE trip_sessions.session_id = 8;
+
+-- 16. Navigation progress fields for mobile
+SELECT
+    session_id,
+    current_step_index,
+    latitude,
+    longitude,
+    remaining_distance_km,
+    remaining_time_minutes,
+    remaining_time_min,
+    progress_percent,
+    progress_percentage,
+    event_type,
+    recorded_at
+FROM navigation_progress
+WHERE session_id = 8;
