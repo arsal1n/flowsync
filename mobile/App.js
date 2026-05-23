@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
+import { NavigationSteps } from "./src/components";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://flowsync-ox5z.onrender.com";
@@ -943,7 +944,7 @@ function recenterOnUserLocation() {
           <Marker
             coordinate={userLocation}
             title="FlowSync vehicle"
-            description="Real GPS location"
+            description="Current location"
             pinColor="green"
           />
         )}
@@ -973,7 +974,6 @@ function recenterOnUserLocation() {
     </View>
   );
 }
-
   function renderHome() {
   const isCollapsed = !homeSheetExpanded;
 
@@ -1271,6 +1271,16 @@ function renderNavigation() {
             ]}
           />
         </View>
+        <View style={styles.gmNavigationStepsBox}>
+  <NavigationSteps
+    selectedRoute={selectedRoute}
+    currentStepIndex={currentStepIndex}
+    progressPercentage={progressPercent}
+    remainingDistanceKm={displayRemainingDistance}
+    remainingTimeMin={displayRemainingEta}
+    navigationStatus={isTracking ? "active" : "ready"}
+  />
+</View>
 
         <TouchableOpacity style={styles.gmDangerWide} onPress={endTrip}>
           <Text style={styles.gmDangerText}>End Trip</Text>
@@ -1946,6 +1956,11 @@ const styles = StyleSheet.create({
     color: "#a8b3c4",
     fontSize: 11,
     marginTop: 3,
+  },
+  gmNavigationStepsBox: {
+    marginTop: 14,
+    maxHeight: 180,
+    overflow: "hidden",
   },
   loadingOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(6,17,31,0.65)" },
   errorToast: { position: "absolute", left: 16, right: 16, bottom: 88, backgroundColor: "#3f1212", borderColor: "#ef4444", borderWidth: 1, borderRadius: 16, padding: 14 },
