@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Linking,
+  PanResponder,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -359,7 +360,8 @@ const [isTracking, setIsTracking] = useState(false);
 const [liveRemainingDistanceKm, setLiveRemainingDistanceKm] = useState(null);
 const [liveRemainingEtaMin, setLiveRemainingEtaMin] = useState(null);
 const [homeSheetExpanded, setHomeSheetExpanded] = useState(false);
-  const selectedRoute = useMemo(() => {
+const [homeSheetHidden, setHomeSheetHidden] = useState(false);  
+const selectedRoute = useMemo(() => {
     return (
       routes.find((route) => route.route_id === selectedRouteId) ||
       routes.find((route) => route.route_id === recommendedRouteId) ||
@@ -416,7 +418,31 @@ const fallbackRemainingDistance = Math.max(
 
 const displayRemainingEta = liveRemainingEtaMin || fallbackRemainingEta;
 const displayRemainingDistance = liveRemainingDistanceKm ?? fallbackRemainingDistance;
+const sheetPanResponder = useMemo(
+  () =>
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10,
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dy > 90) {
+          setHomeSheetHidden(true);
+          setHomeSheetExpanded(false);
+          return;
+        }
 
+        if (gesture.dy > 30) {
+          setHomeSheetHidden(false);
+          setHomeSheetExpanded(false);
+          return;
+        }
+
+        if (gesture.dy < -30) {
+          setHomeSheetHidden(false);
+          setHomeSheetExpanded(true);
+        }
+      },
+    }),
+  []
+);
   async function apiRequest(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: {
@@ -670,6 +696,21 @@ function stopLiveTracking() {
       setScreen("home");
     });
   }
+function recenterOnUserLocation() {
+  if (!userLocation) {
+    getMyLocation();
+    return;
+  }
+
+  mapRef.current?.animateCamera(
+    {
+      center: userLocation,
+      zoom: 17,
+      pitch: 55,
+    },
+    { duration: 700 }
+  );
+}
 
   function selectRoute(route) {
     setSelectedRouteId(route.route_id);
@@ -792,16 +833,6 @@ function stopLiveTracking() {
   });
 }
 
-  function openExternalNavigation() {
-    const url =
-      `https://www.google.com/maps/dir/?api=1` +
-      `&origin=${encodeURIComponent(startLocation)}` +
-      `&destination=${encodeURIComponent(destination)}` +
-      `&travelmode=driving`;
-
-    Linking.openURL(url);
-  }
-
   function swapLocations() {
     setStartLocation(destination);
     setDestination(startLocation);
@@ -885,9 +916,6 @@ function stopLiveTracking() {
   const start = routeCoordinates[0];
   const end = routeCoordinates[routeCoordinates.length - 1];
 
-  const vehiclePoint =
-    routeCoordinates[Math.min(currentStepIndex, routeCoordinates.length - 1)] || start;
-
   return (
     <View style={styles.gmMapShell}>
       <MapView
@@ -907,15 +935,15 @@ function stopLiveTracking() {
           <Marker coordinate={end} title="Destination" description={destination} />
         )}
 
-        {userLocation && (
+        {!navigation && userLocation && (
           <Marker coordinate={userLocation} title="You" pinColor="blue" />
         )}
 
-        {navigation && vehiclePoint && (
+        {navigation && userLocation && (
           <Marker
-            coordinate={vehiclePoint}
+            coordinate={userLocation}
             title="FlowSync vehicle"
-            description={selectedRoute?.route_name}
+            description="Real GPS location"
             pinColor="green"
           />
         )}
@@ -947,6 +975,8 @@ function stopLiveTracking() {
 }
 
   function renderHome() {
+  const isCollapsed = !homeSheetExpanded;
+
   return (
     <View style={styles.gmScreen}>
       {renderMap()}
@@ -980,7 +1010,14 @@ function stopLiveTracking() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.gmFindButton} onPress={recommendRoute}>
+        <TouchableOpacity
+          style={styles.gmFindButton}
+          onPress={() => {
+            setHomeSheetHidden(false);
+            setHomeSheetExpanded(false);
+            recommendRoute();
+          }}
+        >
           <Text style={styles.gmFindButtonText}>Find FlowSync Route</Text>
         </TouchableOpacity>
       </View>
@@ -999,86 +1036,140 @@ function stopLiveTracking() {
         )}
       </ScrollView>
 
-      <View
-        style={[
-          styles.gmRouteSheet,
-          !homeSheetExpanded ? styles.gmRouteSheetCollapsed : null,
-        ]}
-      >
+      {homeSheetHidden ? (
         <TouchableOpacity
-          style={styles.gmSheetHandleButton}
-          onPress={() => setHomeSheetExpanded((current) => !current)}
+          style={styles.gmHiddenRoutePill}
+          onPress={() => {
+            setHomeSheetHidden(false);
+            setHomeSheetExpanded(false);
+          }}
         >
-          <View style={styles.gmHandle} />
+          <View>
+            <Text style={styles.gmHiddenRouteTitle}>
+              {selectedRoute?.eta_text || "--"} • {selectedRoute?.route_id}
+            </Text>
+            <Text style={styles.gmHiddenRouteSub}>Show route details</Text>
+          </View>
+
+          <Text style={styles.gmHiddenRouteArrow}>⌃</Text>
         </TouchableOpacity>
-
-        <View style={styles.gmSheetHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.gmRouteTitle} numberOfLines={homeSheetExpanded ? 3 : 1}>
-              {selectedRoute?.route_name || "FlowSync Route"}
-            </Text>
-
-            <Text style={styles.gmRouteSub}>
-              {startLocation} → {destination}
-            </Text>
-          </View>
-
-          {selectedRoute?.route_id === recommendedRouteId ? (
-            <Text style={styles.gmRecommended}>Recommended</Text>
-          ) : (
-            <Text style={styles.gmSelected}>Selected</Text>
-          )}
-        </View>
-
-        <View style={styles.gmMetrics}>
-          <View style={styles.gmMetricBox}>
-            <Text style={styles.gmMetricValue}>{selectedRoute?.eta_text || "--"}</Text>
-            <Text style={styles.gmMetricLabel}>ETA</Text>
-          </View>
-
-          <View style={styles.gmMetricBox}>
-            <Text style={styles.gmMetricValue}>{selectedRoute?.distance_text || "--"}</Text>
-            <Text style={styles.gmMetricLabel}>Distance</Text>
-          </View>
-
-          <View style={styles.gmMetricBox}>
-            <Text style={styles.gmMetricValue}>
-              {selectedRoute?.congestion_score ?? "--"}
-            </Text>
-            <Text style={styles.gmMetricLabel}>Traffic</Text>
-          </View>
-        </View>
-
-        {homeSheetExpanded ? (
-          <View style={styles.gmFlowBox}>
-            <Text style={styles.gmFlowTitle}>Why FlowSync chose this</Text>
-            <Text style={styles.gmFlowText}>
-              {selectedRoute?.recommendation_reason || recommendationReason}
-            </Text>
-            <Text style={styles.gmFlowSmall}>
-              Selected Route: {selectedRoute?.route_id} • Score:{" "}
-              {selectedRoute?.flowsync_score || selectedRoute?.route_score}
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.gmCollapsedHint}>
-            Tap handle to expand route details
-          </Text>
-        )}
-
-        <View style={styles.gmActionRow}>
-          <TouchableOpacity
-            style={styles.gmSecondaryButton}
-            onPress={() => setScreen("routes")}
+      ) : (
+        <View
+          style={[
+            styles.gmRouteSheet,
+            isCollapsed
+              ? styles.gmRouteSheetCollapsed
+              : styles.gmRouteSheetExpanded,
+          ]}
+        >
+          <View
+            style={styles.gmSheetHandleButton}
+            {...sheetPanResponder.panHandlers}
           >
-            <Text style={styles.gmSecondaryButtonText}>Routes</Text>
-          </TouchableOpacity>
+            <View style={styles.gmHandle} />
+            <Text style={styles.gmSwipeHint}>
+              {isCollapsed
+                ? "Swipe up for details • swipe down to hide"
+                : "Swipe down to collapse or hide"}
+            </Text>
+          </View>
 
-          <TouchableOpacity style={styles.gmPrimaryButton} onPress={startTrip}>
-            <Text style={styles.gmPrimaryButtonText}>Start</Text>
+          <View style={styles.gmSheetHeader}>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={styles.gmRouteTitle}
+                numberOfLines={isCollapsed ? 1 : 3}
+              >
+                {selectedRoute?.route_name || "FlowSync Route"}
+              </Text>
+
+              <Text style={styles.gmRouteSub}>
+                {startLocation} → {destination}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.gmSheetToggleButton}
+              onPress={() => {
+                if (homeSheetExpanded) {
+                  setHomeSheetExpanded(false);
+                } else {
+                  setHomeSheetHidden(false);
+                  setHomeSheetExpanded(true);
+                }
+              }}
+            >
+              <Text style={styles.gmSheetToggleText}>
+                {isCollapsed ? "⌃" : "⌄"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.gmMiniMetrics}>
+            <View style={styles.gmMiniMetric}>
+              <Text style={styles.gmMiniMetricValue}>
+                {selectedRoute?.eta_text || "--"}
+              </Text>
+              <Text style={styles.gmMiniMetricLabel}>ETA</Text>
+            </View>
+
+            <View style={styles.gmMiniMetric}>
+              <Text style={styles.gmMiniMetricValue}>
+                {selectedRoute?.distance_text || "--"}
+              </Text>
+              <Text style={styles.gmMiniMetricLabel}>Distance</Text>
+            </View>
+
+            <View style={styles.gmMiniMetric}>
+              <Text style={styles.gmMiniMetricValue}>
+                {selectedRoute?.congestion_score ?? "--"}
+              </Text>
+              <Text style={styles.gmMiniMetricLabel}>Traffic</Text>
+            </View>
+          </View>
+
+          {homeSheetExpanded && (
+            <View style={styles.gmFlowBox}>
+              <Text style={styles.gmFlowTitle}>Why FlowSync chose this</Text>
+              <Text style={styles.gmFlowText}>
+                {selectedRoute?.recommendation_reason || recommendationReason}
+              </Text>
+              <Text style={styles.gmFlowSmall}>
+                Selected Route: {selectedRoute?.route_id} • Score:{" "}
+                {selectedRoute?.flowsync_score || selectedRoute?.route_score}
+              </Text>
+              <Text style={styles.gmFlowSmall}>
+                Load: {selectedRoute?.assigned_users || 0}/
+                {selectedRoute?.road_capacity || "--"} •{" "}
+                {selectedRoute?.load_status || "balanced"}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.gmActionRow}>
+            <TouchableOpacity
+              style={styles.gmSecondaryButton}
+              onPress={() => setScreen("routes")}
+            >
+              <Text style={styles.gmSecondaryButtonText}>Routes</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.gmPrimaryButton} onPress={startTrip}>
+              <Text style={styles.gmPrimaryButtonText}>Start</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.gmHideSheetButton}
+            onPress={() => {
+              setHomeSheetHidden(true);
+              setHomeSheetExpanded(false);
+            }}
+          >
+            <Text style={styles.gmHideSheetText}>Hide route panel</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -1119,7 +1210,7 @@ function stopLiveTracking() {
     );
   }
 
-  function renderNavigation() {
+function renderNavigation() {
   return (
     <View style={styles.gmScreen}>
       {renderMap({ navigation: true })}
@@ -1133,17 +1224,17 @@ function stopLiveTracking() {
           <Text style={styles.gmNavTitle}>
             {activeStep?.instruction || "Continue on selected route"}
           </Text>
+
           <Text style={styles.gmNavSub}>
-            Then follow FlowSync guidance • Step{" "}
-            {Math.min(currentStepIndex + 1, Math.max(turnSteps.length, 1))} of{" "}
+            Step {Math.min(currentStepIndex + 1, Math.max(turnSteps.length, 1))} of{" "}
             {Math.max(turnSteps.length, 1)}
           </Text>
         </View>
       </View>
 
       <View style={styles.gmNavFloating}>
-        <TouchableOpacity style={styles.gmCircleButton}>
-          <Text style={styles.gmCircleButtonText}>🔍</Text>
+        <TouchableOpacity style={styles.gmCircleButton} onPress={getMyLocation}>
+          <Text style={styles.gmCircleButtonText}>⌖</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.gmCircleButton}>
@@ -1159,11 +1250,12 @@ function stopLiveTracking() {
         <View style={styles.gmHandle} />
 
         <View style={styles.gmNavMetrics}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.gmNavEta}>{displayRemainingEta} min</Text>
-<Text style={styles.gmRouteSub}>
-  {displayRemainingDistance} km • {selectedRoute?.traffic_display || "Live traffic"}
-</Text>
+            <Text style={styles.gmRouteSub}>
+              {displayRemainingDistance} km •{" "}
+              {selectedRoute?.traffic_display || "Live traffic"}
+            </Text>
           </View>
 
           <TouchableOpacity style={styles.gmEndIconButton} onPress={endTrip}>
@@ -1172,20 +1264,13 @@ function stopLiveTracking() {
         </View>
 
         <View style={styles.gmProgressTrack}>
-          <View style={[styles.gmProgressFill, { width: `${progressPercent}%` }]} />
+          <View
+            style={[
+              styles.gmProgressFill,
+              { width: `${progressPercent}%` },
+            ]}
+          />
         </View>
-
-        <View style={styles.gmLiveTrackingBox}>
-  <Text style={styles.gmLiveTrackingText}>
-    {isTracking
-      ? "Real GPS tracking active. Instructions update from phone location."
-      : "GPS tracking not active."}
-  </Text>
-</View>
-
-<TouchableOpacity style={styles.gmPrimaryButton} onPress={openExternalNavigation}>
-  <Text style={styles.gmPrimaryButtonText}>Open Maps</Text>
-</TouchableOpacity>
 
         <TouchableOpacity style={styles.gmDangerWide} onPress={endTrip}>
           <Text style={styles.gmDangerText}>End Trip</Text>
@@ -1796,6 +1881,72 @@ const styles = StyleSheet.create({
     color: "#2b0505",
     fontWeight: "900",
   },
+    gmRouteSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 72,
+    backgroundColor: "rgba(18,18,18,0.97)",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 18,
+  },
+  gmRouteSheetCollapsed: {
+    height: 265,
+  },
+  gmRouteSheetExpanded: {
+    maxHeight: 540,
+  },
+  gmSheetHandleButton: {
+    alignItems: "center",
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  gmSwipeHint: {
+    color: "#9ca3af",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  gmSheetToggleButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#202124",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gmSheetToggleText: {
+    color: "#7dd3fc",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  gmMiniMetrics: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  gmMiniMetric: {
+    flex: 1,
+    backgroundColor: "#202124",
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+  gmMiniMetricValue: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  gmMiniMetricLabel: {
+    color: "#a8b3c4",
+    fontSize: 11,
+    marginTop: 3,
+  },
   loadingOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(6,17,31,0.65)" },
   errorToast: { position: "absolute", left: 16, right: 16, bottom: 88, backgroundColor: "#3f1212", borderColor: "#ef4444", borderWidth: 1, borderRadius: 16, padding: 14 },
     errorText: {
@@ -1814,17 +1965,44 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: "center",
   },
-  gmLiveTrackingBox: {
-    backgroundColor: "#ecfeff",
-    borderColor: "#06b6d4",
+    gmHiddenRoutePill: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 88,
+    backgroundColor: "rgba(18,18,18,0.96)",
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderRadius: 18,
-    padding: 12,
-    marginTop: 14,
+    borderColor: "rgba(255,255,255,0.12)",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    elevation: 8,
   },
-  gmLiveTrackingText: {
-    color: "#0f172a",
+  gmHiddenRouteTitle: {
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  gmHiddenRouteSub: {
+    color: "#9ca3af",
+    fontSize: 12,
+    marginTop: 3,
+  },
+  gmHiddenRouteArrow: {
+    color: "#22c55e",
+    fontSize: 28,
+    fontWeight: "900",
+  },
+  gmHideSheetButton: {
+    alignItems: "center",
+    paddingTop: 12,
+  },
+  gmHideSheetText: {
+    color: "#9ca3af",
+    fontSize: 12,
     fontWeight: "800",
-    lineHeight: 20,
   },
 });

@@ -518,6 +518,8 @@ CREATE TABLE IF NOT EXISTS navigation_progress (
     latitude REAL,
     longitude REAL,
     speed_kmh REAL,
+    remaining_time_min REAL,
+    progress_percentage REAL DEFAULT 0,
     remaining_distance_km REAL,
     remaining_time_minutes REAL,
     progress_percent REAL DEFAULT 0,
