@@ -1065,3 +1065,9 @@ register_coordinate_priority_middleware(app)
 from coordinate_geometry_guard_middleware import register_coordinate_geometry_guard_middleware
 
 register_coordinate_geometry_guard_middleware(app)
+
+# --- FlowSync route alternative dedupe middleware ---
+# Removes duplicate Route B/C cards when provider returns the same geometry.
+from route_alternative_dedupe_middleware import register_route_alternative_dedupe_middleware
+
+register_route_alternative_dedupe_middleware(app)
