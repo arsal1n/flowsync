@@ -341,6 +341,12 @@ const sessionIdRef = useRef("");
 
   const [startLocation, setStartLocation] = useState("Dubai Mall");
   const [destination, setDestination] = useState("Dubai Marina");
+  const [startSuggestions, setStartSuggestions] = useState([]);
+const [destinationSuggestions, setDestinationSuggestions] = useState([]);
+const [searchingStart, setSearchingStart] = useState(false);
+const [searchingDestination, setSearchingDestination] = useState(false);
+const [selectedStartPlace, setSelectedStartPlace] = useState(null);
+const [selectedDestinationPlace, setSelectedDestinationPlace] = useState(null);
   const [routePreference, setRoutePreference] = useState("balanced");
 
   const [tripId, setTripId] = useState(null);
@@ -362,6 +368,7 @@ const [liveRemainingDistanceKm, setLiveRemainingDistanceKm] = useState(null);
 const [liveRemainingEtaMin, setLiveRemainingEtaMin] = useState(null);
 const [homeSheetExpanded, setHomeSheetExpanded] = useState(false);
 const [homeSheetHidden, setHomeSheetHidden] = useState(false);  
+const [routeSheetMode, setRouteSheetMode] = useState("expanded");
 const selectedRoute = useMemo(() => {
     return (
       routes.find((route) => route.route_id === selectedRouteId) ||
@@ -439,6 +446,28 @@ const sheetPanResponder = useMemo(
         if (gesture.dy < -30) {
           setHomeSheetHidden(false);
           setHomeSheetExpanded(true);
+        }
+      },
+    }),
+  []
+);
+const routeSheetPanResponder = useMemo(
+  () =>
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10,
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dy > 90) {
+          setRouteSheetMode("hidden");
+          return;
+        }
+
+        if (gesture.dy > 30) {
+          setRouteSheetMode("collapsed");
+          return;
+        }
+
+        if (gesture.dy < -30) {
+          setRouteSheetMode("expanded");
         }
       },
     }),
@@ -525,6 +554,133 @@ const sheetPanResponder = useMemo(
       setMapRegion({ ...nextLocation, latitudeDelta: 0.04, longitudeDelta: 0.04 });
     });
   }
+  async function useCurrentLocationAsStart() {
+  await runAction(async () => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+
+    if (permission.status !== "granted") {
+      throw new Error("Location permission was denied.");
+    }
+
+    const current = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+
+    const currentCoords = {
+      latitude: current.coords.latitude,
+      longitude: current.coords.longitude,
+    };
+
+    let locationName = "Current Location";
+
+    try {
+      const reverseResults = await Location.reverseGeocodeAsync(currentCoords);
+      const firstResult = reverseResults?.[0];
+
+      if (firstResult) {
+        const parts = [
+          firstResult.name,
+          firstResult.street,
+          firstResult.district,
+          firstResult.city,
+        ].filter(Boolean);
+
+        locationName = parts.length ? parts.join(", ") : "Current Location";
+      }
+    } catch {
+      locationName = "Current Location";
+    }
+
+    setUserLocation(currentCoords);
+    setStartLocation(locationName);
+    setSelectedStartPlace({
+      place_id: "device-current-location",
+      name: locationName,
+      display_name: locationName,
+      latitude: currentCoords.latitude,
+      longitude: currentCoords.longitude,
+      lat: currentCoords.latitude,
+      lng: currentCoords.longitude,
+      provider_name: "device_gps",
+      provider_status: "current_location",
+      category: "Current location",
+    });
+
+    setStartSuggestions([]);
+
+    setMapRegion({
+      ...currentCoords,
+      latitudeDelta: 0.04,
+      longitudeDelta: 0.04,
+    });
+
+    mapRef.current?.animateCamera(
+      {
+        center: currentCoords,
+        zoom: 16,
+        pitch: 45,
+      },
+      { duration: 700 }
+    );
+  });
+}
+
+  async function searchLocations(query, type) {
+  const cleanQuery = query.trim();
+
+  if (cleanQuery.length < 2) {
+    if (type === "start") setStartSuggestions([]);
+    if (type === "destination") setDestinationSuggestions([]);
+    return;
+  }
+
+  if (type === "start") setSearchingStart(true);
+  if (type === "destination") setSearchingDestination(true);
+
+  try {
+    const data = await apiRequest(
+      `/api/locations/search?q=${encodeURIComponent(cleanQuery)}`
+    );
+
+    const results =
+      data?.results ||
+      data?.locations ||
+      data?.data ||
+      [];
+
+    if (type === "start") setStartSuggestions(results);
+    if (type === "destination") setDestinationSuggestions(results);
+  } catch {
+    const localResults = UAE_LOCATIONS.filter((place) =>
+      place.name.toLowerCase().includes(cleanQuery.toLowerCase())
+    );
+
+    if (type === "start") setStartSuggestions(localResults);
+    if (type === "destination") setDestinationSuggestions(localResults);
+  } finally {
+    if (type === "start") setSearchingStart(false);
+    if (type === "destination") setSearchingDestination(false);
+  }
+}
+
+function selectLocationSuggestion(place, type) {
+  const name = place.name || place.place_name || place.display_name || place.label;
+
+  if (!name) return;
+
+  if (type === "start") {
+    setStartLocation(name);
+    setSelectedStartPlace(place);
+    setStartSuggestions([]);
+  }
+
+  if (type === "destination") {
+    setDestination(name);
+    setSelectedDestinationPlace(place);
+    setDestinationSuggestions([]);
+  }
+}
+
 function updateNavigationProgressFromLocation(currentLocation) {
   const coords = routeCoordinatesRef.current;
   const steps = turnStepsRef.current;
@@ -653,20 +809,47 @@ function stopLiveTracking() {
 
   setIsTracking(false);
 }
-  async function recommendRoute() {
-    await runAction(async () => {
+async function recommendRoute() {
+  const cleanStart = startLocation.trim();
+  const cleanDestination = destination.trim();
+
+  if (!cleanStart || !cleanDestination) {
+    setError("Please enter both start location and destination.");
+    return;
+  }
+
+  if (cleanStart.toLowerCase() === cleanDestination.toLowerCase()) {
+    setError("Start and destination cannot be the same.");
+    return;
+  }
+
+  await runAction(async () => {
       let data;
 
       try {
         data = await apiRequest("/api/routes/recommend", {
           method: "POST",
           body: JSON.stringify({
-            start_location: startLocation,
-            destination,
-            vehicle_type: "car",
-            route_preference: routePreference,
-            user_role: user?.role || "driver",
-          }),
+  start_location: cleanStart,
+  destination: cleanDestination,
+
+  start_latitude: selectedStartPlace?.latitude ?? selectedStartPlace?.lat,
+  start_longitude:
+    selectedStartPlace?.longitude ??
+    selectedStartPlace?.lng ??
+    selectedStartPlace?.lon,
+
+  destination_latitude:
+    selectedDestinationPlace?.latitude ?? selectedDestinationPlace?.lat,
+  destination_longitude:
+    selectedDestinationPlace?.longitude ??
+    selectedDestinationPlace?.lng ??
+    selectedDestinationPlace?.lon,
+
+  vehicle_type: "car",
+  route_preference: routePreference,
+  user_role: user?.role || "driver",
+}),
         });
       } catch {
         data = {
@@ -879,39 +1062,81 @@ function recenterOnUserLocation() {
 }
 
   function renderLogin() {
-    return (
-      <ScrollView contentContainerStyle={styles.loginContainer}>
-        <Text style={styles.logoHero}>FlowSync</Text>
-        <Text style={styles.loginSubtitle}>Smart City Navigation</Text>
+  return (
+    <ScrollView contentContainerStyle={styles.loginShell}>
+      <View style={styles.loginBrandBlock}>
+        <View style={styles.loginLogoRow}>
+          <View style={styles.logoBubble}>
+            <Text style={styles.logoBubbleText}>FS</Text>
+          </View>
 
-        <View style={styles.loginCard}>
-          <Text style={styles.heroTitle}>Move through Dubai smarter.</Text>
-          <Text style={styles.bodyText}>Plan routes, compare congestion, start in-app navigation, and see why FlowSync selected your route.</Text>
-
-          <Text style={styles.label}>Email</Text>
-          <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" />
-
-          <Text style={styles.label}>Password</Text>
-          <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
-
-          <TouchableOpacity style={styles.primaryButton} onPress={login}>
-            <Text style={styles.primaryButtonText}>Enter FlowSync</Text>
-          </TouchableOpacity>
+          <View>
+            <Text style={styles.loginLogoText}>FlowSync</Text>
+            <Text style={styles.loginSubline}>Smart City Mobility</Text>
+          </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.title}>Demo accounts</Text>
+        <Text style={styles.loginHeroTitle}>Navigate Dubai smarter.</Text>
+        <Text style={styles.loginHeroText}>
+          Real-time route planning, congestion-aware choices, and in-app navigation.
+        </Text>
+      </View>
+
+      <View style={styles.loginHeroCard}>
+        <Text style={styles.loginFieldLabel}>Email</Text>
+        <TextInput
+          style={styles.loginField}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          placeholder="Enter your email"
+          placeholderTextColor="#64748b"
+        />
+
+        <Text style={styles.loginFieldLabel}>Password</Text>
+        <TextInput
+          style={styles.loginField}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="Enter your password"
+          placeholderTextColor="#64748b"
+        />
+
+        <TouchableOpacity style={styles.loginButton} onPress={login}>
+          <Text style={styles.loginButtonText}>Continue</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.quickAccessCard}>
+        <Text style={styles.quickAccessTitle}>Quick access</Text>
+
+        <View style={styles.quickAccountGrid}>
           {DEMO_ACCOUNTS.map((account) => (
-            <TouchableOpacity key={account.email} style={styles.demoRow} onPress={() => setEmail(account.email)}>
-              <Text style={styles.listTitle}>{account.role}</Text>
-              <Text style={styles.muted}>{account.email}</Text>
-              <Text style={styles.muted}>{account.description}</Text>
+            <TouchableOpacity
+              key={account.email}
+              style={[
+                styles.quickAccountButton,
+                email === account.email ? styles.quickAccountButtonActive : null,
+              ]}
+              onPress={() => setEmail(account.email)}
+            >
+              <Text
+                style={[
+                  styles.quickAccountRole,
+                  email === account.email ? styles.quickAccountRoleActive : null,
+                ]}
+              >
+                {account.role}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
-      </ScrollView>
-    );
-  }
+      </View>
+    </ScrollView>
+  );
+}
 
   function renderMap({ navigation = false } = {}) {
   const start = routeCoordinates[0];
@@ -987,22 +1212,128 @@ function recenterOnUserLocation() {
 
           <View style={styles.gmSearchInputs}>
             <TextInput
-              style={styles.gmSearchInput}
-              value={startLocation}
-              onChangeText={setStartLocation}
-              placeholder="Start location"
-              placeholderTextColor="#9ca3af"
-            />
+  style={styles.gmSearchInput}
+  value={startLocation}
+  onChangeText={(text) => {
+    setStartLocation(text);
+    setSelectedStartPlace(null);
+    searchLocations(text, "start");
+  }}
+  placeholder="Start location"
+  placeholderTextColor="#9ca3af"
+/>
 
-            <View style={styles.gmDivider} />
+{searchingStart ? (
+  <Text style={styles.gmSuggestionStatus}>Searching start...</Text>
+) : null}
 
-            <TextInput
-              style={styles.gmSearchInput}
-              value={destination}
-              onChangeText={setDestination}
-              placeholder="Where to?"
-              placeholderTextColor="#9ca3af"
-            />
+{startSuggestions.length > 0 ? (
+  <View style={styles.gmSuggestionsBox}>
+    {startSuggestions.slice(0, 4).map((place, index) => (
+      <TouchableOpacity
+        key={`start-${index}`}
+        style={styles.gmSuggestionItem}
+        onPress={() => selectLocationSuggestion(place, "start")}
+      >
+        <Text style={styles.gmSuggestionTitle}>
+          {place.name || place.place_name || place.display_name || place.label}
+        </Text>
+        <Text style={styles.gmSuggestionSub}>
+          {place.area || place.city || place.category || "Location"}
+        </Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+) : null}
+
+{searchingStart ? (
+  <Text style={styles.gmSuggestionStatus}>Searching start location...</Text>
+) : null}
+
+{startSuggestions.length > 0 ? (
+  <View style={styles.gmSuggestionsBox}>
+    {startSuggestions.slice(0, 4).map((place, index) => (
+      <TouchableOpacity
+        key={`start-${index}`}
+        style={styles.gmSuggestionItem}
+        onPress={() => selectLocationSuggestion(place, "start")}
+      >
+        <Text style={styles.gmSuggestionTitle}>
+          {place.name || place.place_name || place.display_name || place.label}
+        </Text>
+        <Text style={styles.gmSuggestionSub}>
+          {place.category || place.area || place.city || "UAE location"}
+        </Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+) : null}
+<TouchableOpacity
+  style={styles.gmUseLocationButton}
+  onPress={useCurrentLocationAsStart}
+>
+  <Text style={styles.gmUseLocationText}>Use my current location as start</Text>
+</TouchableOpacity>
+
+<View style={styles.gmDivider} />
+
+<TextInput
+  style={styles.gmSearchInput}
+  value={destination}
+  onChangeText={(text) => {
+    setDestination(text);
+    setSelectedDestinationPlace(null);
+    searchLocations(text, "destination");
+  }}
+  placeholder="Where to?"
+  placeholderTextColor="#9ca3af"
+/>
+
+{searchingDestination ? (
+  <Text style={styles.gmSuggestionStatus}>Searching destination...</Text>
+) : null}
+
+{destinationSuggestions.length > 0 ? (
+  <View style={styles.gmSuggestionsBox}>
+    {destinationSuggestions.slice(0, 4).map((place, index) => (
+      <TouchableOpacity
+        key={`destination-${index}`}
+        style={styles.gmSuggestionItem}
+        onPress={() => selectLocationSuggestion(place, "destination")}
+      >
+        <Text style={styles.gmSuggestionTitle}>
+          {place.name || place.place_name || place.display_name || place.label}
+        </Text>
+        <Text style={styles.gmSuggestionSub}>
+          {place.area || place.city || place.category || "Location"}
+        </Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+) : null}
+
+{searchingDestination ? (
+  <Text style={styles.gmSuggestionStatus}>Searching destination...</Text>
+) : null}
+
+{destinationSuggestions.length > 0 ? (
+  <View style={styles.gmSuggestionsBox}>
+    {destinationSuggestions.slice(0, 4).map((place, index) => (
+      <TouchableOpacity
+        key={`destination-${index}`}
+        style={styles.gmSuggestionItem}
+        onPress={() => selectLocationSuggestion(place, "destination")}
+      >
+        <Text style={styles.gmSuggestionTitle}>
+          {place.name || place.place_name || place.display_name || place.label}
+        </Text>
+        <Text style={styles.gmSuggestionSub}>
+          {place.category || place.area || place.city || "UAE location"}
+        </Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+) : null}
           </View>
 
           <TouchableOpacity style={styles.gmSwapButton} onPress={swapLocations}>
@@ -1173,42 +1504,243 @@ function recenterOnUserLocation() {
     </View>
   );
 }
+function renderRouteCompareMap() {
+  const selectedCoords = getRouteCoordinates(selectedRoute);
+  const start = selectedCoords[0];
+  const end = selectedCoords[selectedCoords.length - 1];
 
-  function renderRoutes() {
-    return (
-      <ScrollView contentContainerStyle={styles.screenContainer}>
-        <Text style={styles.pageTitle}>Route options</Text>
-        <Text style={styles.bodyText}>Recommended route is only the default. If you select Route D, map, ETA, navigation, and trip summary all use Route D.</Text>
+  const sortedRoutes = [
+    ...routes.filter((route) => route.route_id !== selectedRouteId),
+    ...routes.filter((route) => route.route_id === selectedRouteId),
+  ];
 
-        {routes.map((route) => (
-          <TouchableOpacity key={route.route_id} style={[styles.routeCard, route.route_id === selectedRouteId ? styles.routeCardActive : null]} onPress={() => selectRoute(route)}>
-            <View style={styles.sheetTopRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.routeName}>{route.route_name}</Text>
-                <Text style={styles.muted}>{route.traffic_display || `Traffic ${route.congestion_score}/10`}</Text>
-              </View>
-              {route.route_id === recommendedRouteId ? <Text style={styles.recommendedPill}>Best</Text> : null}
-              {route.route_id === selectedRouteId ? <Text style={styles.selectedPill}>Selected</Text> : null}
-            </View>
+  return (
+    <View style={styles.gmMapShell}>
+      <MapView
+        key={`route-map-${selectedRouteId}`}
+        ref={mapRef}
+        style={styles.gmMap}
+        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+        region={mapRegion}
+        onRegionChangeComplete={setMapRegion}
+        showsUserLocation
+        showsMyLocationButton={false}
+      >
+        {sortedRoutes.slice(0, 4).map((route) => {
+          const coords = getRouteCoordinates(route);
+          const isSelected = route.route_id === selectedRouteId;
 
-            <View style={styles.metricsRow}>
-              <Metric label="ETA" value={route.eta_text || `${route.estimated_time_min} min`} />
-              <Metric label="Distance" value={route.distance_text || `${route.distance_km} km`} />
-              <Metric label="Score" value={String(route.flowsync_score || route.route_score)} />
-            </View>
+          return coords.length > 1 ? (
+            <Polyline
+              key={route.route_id}
+              coordinates={coords}
+              strokeWidth={isSelected ? 8 : 5}
+              strokeColor={isSelected ? "#2563eb" : "rgba(75,85,99,0.65)"}
+              zIndex={isSelected ? 10 : 1}
+              tappable
+              onPress={() => {
+                selectRoute(route);
+                setRouteSheetMode("collapsed");
+              }}
+            />
+          ) : null;
+        })}
 
-            <Text style={styles.reasonText}>{route.recommendation_reason}</Text>
-            <View style={styles.loadTrack}><View style={[styles.loadFill, { width: `${Math.min((route.load_ratio || 0.2) * 100, 100)}%` }]} /></View>
-            <Text style={styles.muted}>Route load: {route.assigned_users || 0}/{route.road_capacity || "--"} • {route.load_status || "balanced"}</Text>
-          </TouchableOpacity>
-        ))}
+        {start && (
+          <Marker coordinate={start} title="Start" description={startLocation} />
+        )}
 
-        <TouchableOpacity style={styles.primaryButton} onPress={() => setScreen("home")}>
-          <Text style={styles.primaryButtonText}>Use Selected Route</Text>
+        {end && (
+          <Marker coordinate={end} title="Destination" description={destination} />
+        )}
+
+        {userLocation && (
+          <Marker coordinate={userLocation} title="You" pinColor="blue" />
+        )}
+      </MapView>
+
+      <View style={styles.routeCompareLegend}>
+        <View style={styles.routeLegendItem}>
+          <View style={styles.routeLegendSelected} />
+          <Text style={styles.routeLegendText}>Selected route</Text>
+        </View>
+
+        <View style={styles.routeLegendItem}>
+          <View style={styles.routeLegendAlt} />
+          <Text style={styles.routeLegendText}>Alternatives</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function renderRoutes() {
+  const isCollapsed = routeSheetMode === "collapsed";
+  const isHidden = routeSheetMode === "hidden";
+  const visibleRoutes = isCollapsed
+    ? [selectedRoute].filter(Boolean)
+    : routes.slice(0, 4);
+
+  return (
+    <View style={styles.gmScreen}>
+      {renderRouteCompareMap()}
+
+      <View style={styles.routeCompareTopCard}>
+        <Text style={styles.routeCompareTitle}>Choose your route</Text>
+        <Text style={styles.routeCompareSub}>
+          {startLocation} → {destination}
+        </Text>
+      </View>
+
+      {isHidden ? (
+        <TouchableOpacity
+          style={styles.routeHiddenPill}
+          onPress={() => setRouteSheetMode("collapsed")}
+        >
+          <View>
+            <Text style={styles.routeHiddenTitle}>
+              {selectedRoute?.eta_text || "--"} • {selectedRoute?.route_id}
+            </Text>
+            <Text style={styles.routeHiddenSub}>
+              Tap to show route options
+            </Text>
+          </View>
+
+          <Text style={styles.routeHiddenArrow}>⌃</Text>
         </TouchableOpacity>
-      </ScrollView>
-    );
-  }
+      ) : (
+        <View
+          style={[
+            styles.routeCompareSheet,
+            isCollapsed
+              ? styles.routeCompareSheetCollapsed
+              : styles.routeCompareSheetExpanded,
+          ]}
+        >
+          <View
+            style={styles.routeSheetHandleArea}
+            {...routeSheetPanResponder.panHandlers}
+          >
+            <View style={styles.gmHandle} />
+            <Text style={styles.routeSheetHint}>
+              {isCollapsed
+                ? "Swipe up for all routes • swipe down to hide"
+                : "Tap route line on map or swipe down to collapse"}
+            </Text>
+          </View>
+
+          <View style={styles.routeCompareHeader}>
+            <View>
+              <Text style={styles.routeCompareSheetTitle}>Route options</Text>
+              <Text style={styles.routeCompareSheetSub}>
+                Tap a route card or route line
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.routeCountPillButton}
+              onPress={() =>
+                setRouteSheetMode(isCollapsed ? "expanded" : "collapsed")
+              }
+            >
+              <Text style={styles.routeCountPillText}>
+                {isCollapsed ? "Show all" : `${routes.length} routes`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.compactRouteList}>
+            {visibleRoutes.map((route) => {
+              const isSelected = route.route_id === selectedRouteId;
+              const isRecommended = route.route_id === recommendedRouteId;
+
+              return (
+                <TouchableOpacity
+                  key={route.route_id}
+                  style={[
+                    styles.compactRouteCard,
+                    isSelected ? styles.compactRouteCardActive : null,
+                  ]}
+                  onPress={() => selectRoute(route)}
+                >
+                  <View style={styles.compactRouteLeft}>
+                    <View
+                      style={[
+                        styles.compactRouteDot,
+                        isSelected ? styles.compactRouteDotActive : null,
+                      ]}
+                    />
+
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.compactRouteTitleRow}>
+                        <Text
+                          style={[
+                            styles.compactRouteName,
+                            isSelected ? styles.compactRouteNameActive : null,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {route.route_name}
+                        </Text>
+
+                        {isRecommended ? (
+                          <Text style={styles.compactBestPill}>Best</Text>
+                        ) : null}
+
+                        {isSelected ? (
+                          <Text style={styles.compactSelectedPill}>Selected</Text>
+                        ) : null}
+                      </View>
+
+                      <Text style={styles.compactRouteReason} numberOfLines={1}>
+                        {route.traffic_display ||
+                          `Traffic ${route.congestion_score}/10`}{" "}
+                        • Load {route.assigned_users || 0}/
+                        {route.road_capacity || "--"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.compactRouteStats}>
+                    <Text style={styles.compactEta}>
+                      {route.eta_text || `${route.estimated_time_min} min`}
+                    </Text>
+                    <Text style={styles.compactDistance}>
+                      {route.distance_text || `${route.distance_km} km`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.routeCompareActionRow}>
+            <TouchableOpacity
+              style={styles.routeBackButton}
+              onPress={() => setScreen("home")}
+            >
+              <Text style={styles.routeBackText}>Back</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.routeUseButton}
+              onPress={() => setScreen("home")}
+            >
+              <Text style={styles.routeUseText}>Use Selected Route</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.routeHideSheetButton}
+            onPress={() => setRouteSheetMode("hidden")}
+          >
+            <Text style={styles.routeHideSheetText}>Hide route options</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
 
 function renderNavigation() {
   return (
@@ -2015,8 +2547,468 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 12,
   },
+    gmSuggestionsBox: {
+    backgroundColor: "rgba(8,12,20,0.98)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    marginTop: 8,
+    overflow: "hidden",
+  },
+  gmSuggestionItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  gmSuggestionTitle: {
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: 14,
+  },
+  gmSuggestionSub: {
+    color: "#9ca3af",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  gmSuggestionStatus: {
+    color: "#7dd3fc",
+    fontSize: 12,
+    marginTop: 6,
+    fontWeight: "800",
+  },
+    gmUseLocationButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(34,197,94,0.14)",
+    borderColor: "rgba(34,197,94,0.45)",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  gmUseLocationText: {
+    color: "#86efac",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  
+    loginShell: {
+    flexGrow: 1,
+    paddingHorizontal: 22,
+    paddingTop: 42,
+    paddingBottom: 40,
+    backgroundColor: "#06111f",
+  },
+  loginBrandBlock: {
+    marginBottom: 24,
+  },
+  loginLogoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 34,
+  },
+  logoBubble: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "#22c55e",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  logoBubbleText: {
+    color: "#03120a",
+    fontWeight: "900",
+    fontSize: 17,
+  },
+  loginLogoText: {
+    color: "#ffffff",
+    fontSize: 34,
+    fontWeight: "900",
+    letterSpacing: -1.5,
+  },
+  loginSubline: {
+    color: "#94a3b8",
+    fontSize: 15,
+    marginTop: 2,
+    fontWeight: "700",
+  },
+  loginHeroTitle: {
+    color: "#ffffff",
+    fontSize: 42,
+    fontWeight: "900",
+    lineHeight: 46,
+    letterSpacing: -1.4,
+  },
+  loginHeroText: {
+    color: "#94a3b8",
+    fontSize: 17,
+    lineHeight: 25,
+    marginTop: 12,
+  },
+  loginHeroCard: {
+    backgroundColor: "rgba(15, 35, 62, 0.96)",
+    borderRadius: 30,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#1f334f",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  loginFieldLabel: {
+    color: "#cbd5e1",
+    fontWeight: "900",
+    marginBottom: 8,
+    marginTop: 10,
+    fontSize: 14,
+  },
+  loginField: {
+    backgroundColor: "#07111f",
+    color: "#ffffff",
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    borderWidth: 1,
+    borderColor: "#263b59",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  loginButton: {
+    backgroundColor: "#22c55e",
+    borderRadius: 22,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  loginButtonText: {
+    color: "#03120a",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  quickAccessCard: {
+    backgroundColor: "rgba(15, 28, 46, 0.92)",
+    borderRadius: 26,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#1f334f",
+  },
+  quickAccessTitle: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 12,
+  },
+  quickAccountGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  quickAccountButton: {
+    flex: 1,
+    backgroundColor: "#07111f",
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#1f334f",
+  },
+  quickAccountButtonActive: {
+    backgroundColor: "#22c55e",
+    borderColor: "#22c55e",
+  },
+  quickAccountRole: {
+    color: "#cbd5e1",
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  quickAccountRoleActive: {
+    color: "#03120a",
+  },
+
   gmHideSheetText: {
     color: "#9ca3af",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+    routeCompareTopCard: {
+    position: "absolute",
+    top: 18,
+    left: 16,
+    right: 16,
+    backgroundColor: "rgba(18,18,18,0.94)",
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  routeCompareTitle: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  routeCompareSub: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    marginTop: 4,
+  },
+  routeCompareLegend: {
+    position: "absolute",
+    top: 116,
+    left: 16,
+    backgroundColor: "rgba(18,18,18,0.88)",
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  routeLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  routeLegendSelected: {
+    width: 24,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#2563eb",
+  },
+  routeLegendAlt: {
+    width: 24,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#6b7280",
+  },
+  routeLegendText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  routeCompareSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 74,
+    backgroundColor: "rgba(18,18,18,0.98)",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 16,
+  },
+  routeCompareHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  routeCompareSheetTitle: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  routeCompareSheetSub: {
+    color: "#94a3b8",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  routeCountPill: {
+    color: "#03120a",
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: "900",
+    overflow: "hidden",
+  },
+  compactRouteList: {
+    gap: 8,
+  },
+  compactRouteCard: {
+    backgroundColor: "#111827",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  compactRouteCardActive: {
+    backgroundColor: "#123458",
+    borderColor: "#2563eb",
+  },
+  compactRouteLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 10,
+  },
+  compactRouteDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#6b7280",
+    marginRight: 10,
+  },
+  compactRouteDotActive: {
+    backgroundColor: "#2563eb",
+  },
+  compactRouteTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  compactRouteName: {
+    color: "#e5e7eb",
+    fontSize: 14,
+    fontWeight: "900",
+    flex: 1,
+  },
+  compactRouteNameActive: {
+    color: "#ffffff",
+  },
+  compactRouteReason: {
+    color: "#94a3b8",
+    fontSize: 11,
+    marginTop: 3,
+  },
+  compactRouteStats: {
+    alignItems: "flex-end",
+    minWidth: 70,
+  },
+  compactEta: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  compactDistance: {
+    color: "#94a3b8",
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "800",
+  },
+  compactBestPill: {
+    color: "#03120a",
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    fontSize: 10,
+    fontWeight: "900",
+    overflow: "hidden",
+  },
+  compactSelectedPill: {
+    color: "#03120a",
+    backgroundColor: "#7dd3fc",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    fontSize: 10,
+    fontWeight: "900",
+    overflow: "hidden",
+  },
+  routeCompareActionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  routeBackButton: {
+    flex: 0.8,
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  routeBackText: {
+    color: "#7dd3fc",
+    fontWeight: "900",
+  },
+  routeUseButton: {
+    flex: 1.4,
+    backgroundColor: "#22c55e",
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  routeUseText: {
+    color: "#03120a",
+    fontWeight: "900",
+  },
+    routeCompareSheetCollapsed: {
+    maxHeight: 260,
+    overflow: "hidden",
+  },
+  routeCompareSheetExpanded: {
+    maxHeight: 520,
+    overflow: "hidden",
+  },
+  routeSheetHandleArea: {
+    alignItems: "center",
+    paddingBottom: 8,
+  },
+  routeSheetHint: {
+    color: "#94a3b8",
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: -8,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  routeCountPillButton: {
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  routeCountPillText: {
+    color: "#03120a",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  routeHiddenPill: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 88,
+    backgroundColor: "rgba(18,18,18,0.96)",
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    elevation: 8,
+  },
+  routeHiddenTitle: {
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  routeHiddenSub: {
+    color: "#94a3b8",
+    fontSize: 12,
+    marginTop: 3,
+  },
+  routeHiddenArrow: {
+    color: "#22c55e",
+    fontSize: 28,
+    fontWeight: "900",
+  },
+  routeHideSheetButton: {
+    alignItems: "center",
+    paddingTop: 10,
+  },
+  routeHideSheetText: {
+    color: "#94a3b8",
     fontSize: 12,
     fontWeight: "800",
   },
