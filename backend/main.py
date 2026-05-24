@@ -1065,3 +1065,9 @@ register_coordinate_priority_middleware(app)
 from coordinate_geometry_guard_middleware import register_coordinate_geometry_guard_middleware
 
 register_coordinate_geometry_guard_middleware(app)
+
+# --- FlowSync TomTom live traffic middleware ---
+# Enriches ORS route geometry with TomTom live traffic flow data.
+from tomtom_traffic_middleware import register_tomtom_traffic_middleware
+
+register_tomtom_traffic_middleware(app)
