@@ -1,4 +1,4 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException
@@ -1066,8 +1066,16 @@ from coordinate_geometry_guard_middleware import register_coordinate_geometry_gu
 
 register_coordinate_geometry_guard_middleware(app)
 
+
+# --- FlowSync coordinate empty route recovery middleware ---
+# If backend returns empty routes despite valid request coordinates,
+# rebuild a clean ORS route directly from start_lat/start_lng to destination_lat/destination_lng.
+from coordinate_route_recovery_middleware import register_coordinate_route_recovery_middleware
+
+register_coordinate_route_recovery_middleware(app)
 # --- FlowSync TomTom live traffic middleware ---
 # Enriches ORS route geometry with TomTom live traffic flow data.
 from tomtom_traffic_middleware import register_tomtom_traffic_middleware
 
 register_tomtom_traffic_middleware(app)
+
