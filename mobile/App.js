@@ -1,8 +1,10 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
-  Linking,
+  Keyboard,
+  Modal,
   PanResponder,
   Platform,
   SafeAreaView,
@@ -16,12 +18,48 @@ import {
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
-import { NavigationSteps } from "./src/components";
+import * as Speech from "expo-speech";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://flowsync-ox5z.onrender.com";
 
 const DEMO_PASSWORD = "flowsync123";
+
+/*
+  Keep this false for real testing.
+  If you want the arrow to auto-move without physically driving,
+  change it to true only for demo simulation.
+*/
+const USE_DEMO_NAVIGATION = false;
+
+const { width, height } = Dimensions.get("window");
+
+const SAFE_TOP = Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0;
+const SAFE_BOTTOM = Platform.OS === "android" ? 18 : 24;
+const TAB_HEIGHT = 84 + SAFE_BOTTOM;
+const PANEL_BOTTOM = TAB_HEIGHT - 2;
+
+const COLORS = {
+  bg: "#050914",
+  panel: "rgba(5, 10, 18, 0.96)",
+  panel2: "#0b1424",
+  card: "#111c2e",
+  card2: "#17243a",
+  border: "rgba(148, 163, 184, 0.18)",
+  borderStrong: "rgba(34, 211, 238, 0.34)",
+  text: "#f8fafc",
+  muted: "#94a3b8",
+  faint: "#64748b",
+  green: "#22c55e",
+  greenSoft: "rgba(34, 197, 94, 0.16)",
+  cyan: "#22d3ee",
+  cyanSoft: "rgba(34, 211, 238, 0.15)",
+  blue: "#2563eb",
+  amber: "#f59e0b",
+  red: "#ef4444",
+  white: "#ffffff",
+  black: "#020617",
+};
 
 const DEFAULT_REGION = {
   latitude: 25.2048,
@@ -30,181 +68,330 @@ const DEFAULT_REGION = {
   longitudeDelta: 0.22,
 };
 
-const UAE_LOCATIONS = [
-  { name: "Dubai Mall", latitude: 25.1972, longitude: 55.2744, category: "Mall" },
-  { name: "Dubai Marina", latitude: 25.08, longitude: 55.14, category: "Waterfront" },
-  { name: "DXB Airport", latitude: 25.2532, longitude: 55.3657, category: "Airport" },
-  { name: "Business Bay", latitude: 25.186, longitude: 55.2608, category: "Business" },
-  { name: "Academic City", latitude: 25.1256, longitude: 55.4209, category: "Education" },
-  { name: "Sharjah", latitude: 25.3463, longitude: 55.4209, category: "City" },
-  { name: "Mall of the Emirates", latitude: 25.1181, longitude: 55.2006, category: "Mall" },
-  { name: "Jumeirah", latitude: 25.2048, longitude: 55.2553, category: "District" },
-  { name: "Expo City Dubai", latitude: 24.9606, longitude: 55.1496, category: "Event" },
-];
-
-const DEMO_ACCOUNTS = [
-  { role: "Driver", email: "driver@flowsync.local", description: "Route search and navigation" },
-  { role: "Admin", email: "admin@flowsync.local", description: "Operations dashboard" },
-  { role: "Emergency", email: "emergency@flowsync.local", description: "Priority routing" },
-];
-
-const FALLBACK_ROUTES = [
+const POPULAR_PLACES = [
   {
-    route_id: "ROUTE-A",
-    route_name: "Route A - Sheikh Zayed Road",
-    estimated_time_min: 22,
-    eta_text: "22 min",
-    distance_km: 14.5,
-    distance_text: "14.5 km",
-    traffic_delay_min: 8,
-    congestion_score: 8,
-    traffic_display: "Heavy traffic • 8/10",
-    route_score: 72.4,
-    flowsync_score: 72.4,
-    is_recommended: false,
-    recommendation_reason: "Fast route, but it adds pressure to a crowded corridor.",
-    assigned_users: 18,
-    road_capacity: 22,
-    load_ratio: 0.82,
-    load_status: "high",
-    route_coordinates: [
-      { latitude: 25.1972, longitude: 55.2744 },
-      { latitude: 25.167, longitude: 55.217 },
-      { latitude: 25.124, longitude: 55.18 },
-      { latitude: 25.08, longitude: 55.14 },
-    ],
-    turn_by_turn_steps: [
-      { step_index: 0, instruction: "Start from Dubai Mall and head toward Sheikh Zayed Road.", distance_m: 900, duration_min: 3 },
-      { step_index: 1, instruction: "Merge onto Sheikh Zayed Road southbound.", distance_m: 5200, duration_min: 8 },
-      { step_index: 2, instruction: "Continue toward Dubai Marina exit.", distance_m: 6200, duration_min: 9 },
-      { step_index: 3, instruction: "Take the exit toward Dubai Marina.", distance_m: 2200, duration_min: 4 },
-      { step_index: 4, instruction: "Arrive at Dubai Marina.", distance_m: 0, duration_min: 0 },
-    ],
-    alerts: [{ title: "Heavy traffic on Sheikh Zayed Road", severity: "high" }],
-    incidents: [],
-    in_app_navigation: true,
-    external_navigation_required: false,
+    name: "Dubai Mall",
+    display_name: "Dubai Mall, Downtown Dubai",
+    latitude: 25.1972,
+    longitude: 55.2744,
+    category: "Mall",
   },
   {
-    route_id: "ROUTE-D",
-    route_name: "Route D - Jumeirah Coastal Alternative",
-    estimated_time_min: 25,
-    eta_text: "25 min",
-    distance_km: 21.2,
-    distance_text: "21.2 km",
-    traffic_delay_min: 3,
-    congestion_score: 3,
-    traffic_display: "Light traffic • 3/10",
-    route_score: 24.7,
-    flowsync_score: 24.7,
-    is_recommended: true,
-    recommendation_reason:
-      "Best balanced route because it avoids heavy congestion near Sheikh Zayed Road and has lower route load.",
-    assigned_users: 6,
-    road_capacity: 22,
-    load_ratio: 0.27,
-    load_status: "low",
-    route_coordinates: [
-      { latitude: 25.1972, longitude: 55.2744 },
-      { latitude: 25.185, longitude: 55.24 },
-      { latitude: 25.15, longitude: 55.205 },
-      { latitude: 25.1124, longitude: 55.139 },
-      { latitude: 25.08, longitude: 55.14 },
-    ],
-    turn_by_turn_steps: [
-      { step_index: 0, instruction: "Start from Dubai Mall and head toward Jumeirah Coastal Road.", distance_m: 1200, duration_min: 3 },
-      { step_index: 1, instruction: "Merge onto Jumeirah Coastal Road.", distance_m: 4800, duration_min: 6 },
-      { step_index: 2, instruction: "Continue on Jumeirah Coastal Road; FlowSync is monitoring traffic pressure.", distance_m: 7800, duration_min: 9 },
-      { step_index: 3, instruction: "Take the connector toward Dubai Marina.", distance_m: 3200, duration_min: 5 },
-      { step_index: 4, instruction: "Arrive at Dubai Marina.", distance_m: 0, duration_min: 0 },
-    ],
-    alerts: [{ title: "FlowSync balanced route active", severity: "low" }],
-    incidents: [],
-    in_app_navigation: true,
-    external_navigation_required: false,
+    name: "Dubai Marina",
+    display_name: "Dubai Marina, Dubai",
+    latitude: 25.08,
+    longitude: 55.14,
+    category: "Waterfront",
   },
   {
-    route_id: "ROUTE-C",
-    route_name: "Route C - Business Bay Side Streets",
-    estimated_time_min: 30,
-    eta_text: "30 min",
-    distance_km: 18.1,
-    distance_text: "18.1 km",
-    traffic_delay_min: 2,
-    congestion_score: 2,
-    traffic_display: "Clear roads • 2/10",
-    route_score: 31.8,
-    flowsync_score: 31.8,
-    is_recommended: false,
-    recommendation_reason: "Low congestion, but longer than the best balanced route.",
-    assigned_users: 4,
-    road_capacity: 18,
-    load_ratio: 0.22,
-    load_status: "low",
-    route_coordinates: [
-      { latitude: 25.1972, longitude: 55.2744 },
-      { latitude: 25.186, longitude: 55.2608 },
-      { latitude: 25.145, longitude: 55.24 },
-      { latitude: 25.1181, longitude: 55.2006 },
-      { latitude: 25.08, longitude: 55.14 },
-    ],
-    turn_by_turn_steps: [
-      { step_index: 0, instruction: "Start from Dubai Mall toward Business Bay.", distance_m: 900, duration_min: 3 },
-      { step_index: 1, instruction: "Use Business Bay side streets to avoid central congestion.", distance_m: 6000, duration_min: 10 },
-      { step_index: 2, instruction: "Continue toward Al Barsha connector.", distance_m: 5200, duration_min: 9 },
-      { step_index: 3, instruction: "Enter Dubai Marina area.", distance_m: 2100, duration_min: 4 },
-    ],
-    alerts: [],
-    incidents: [],
-    in_app_navigation: true,
-    external_navigation_required: false,
+    name: "DXB Airport",
+    display_name: "Dubai International Airport",
+    latitude: 25.2532,
+    longitude: 55.3657,
+    category: "Airport",
+  },
+  {
+    name: "Business Bay",
+    display_name: "Business Bay, Dubai",
+    latitude: 25.186,
+    longitude: 55.2608,
+    category: "Business",
+  },
+  {
+    name: "Academic City",
+    display_name: "Dubai International Academic City",
+    latitude: 25.1256,
+    longitude: 55.4209,
+    category: "Education",
+  },
+  {
+    name: "Sharjah",
+    display_name: "Sharjah, UAE",
+    latitude: 25.3463,
+    longitude: 55.4209,
+    category: "City",
   },
 ];
 
-function findTokenDeep(value) {
+const QUICK_ACCOUNTS = [
+  {
+    role: "Driver",
+    email: "driver@flowsync.local",
+    description: "Route planning and navigation",
+  },
+  {
+    role: "Admin",
+    email: "admin@flowsync.local",
+    description: "Operations dashboard",
+  },
+  {
+    role: "Emergency",
+    email: "emergency@flowsync.local",
+    description: "Priority routing view",
+  },
+];
+
+const REPORT_TYPES = [
+  { id: "traffic", label: "Traffic", icon: "🚗" },
+  { id: "crash", label: "Crash", icon: "💥" },
+  { id: "hazard", label: "Hazard", icon: "⚠️" },
+  { id: "police", label: "Police", icon: "👮" },
+  { id: "blocked_lane", label: "Blocked lane", icon: "🚧" },
+  { id: "closure", label: "Closure", icon: "⛔" },
+  { id: "weather", label: "Weather", icon: "⛈️" },
+  { id: "parking", label: "Parking", icon: "🅿️" },
+  { id: "map_issue", label: "Map issue", icon: "🗺️" },
+];
+
+const MAP_STYLE_LIGHT = [
+  { elementType: "geometry", stylers: [{ color: "#edf3fb" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#334155" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#f8fafc" }] },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#ffffff" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#cbd5e1" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#9bdff4" }],
+  },
+  { featureType: "poi", stylers: [{ visibility: "simplified" }] },
+  { featureType: "transit", stylers: [{ visibility: "simplified" }] },
+];
+
+const MAP_STYLE_NAV = [
+  { elementType: "geometry", stylers: [{ color: "#111827" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#dbeafe" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#020617" }] },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#334155" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#475569" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#082f49" }],
+  },
+  { featureType: "poi", stylers: [{ visibility: "simplified" }] },
+  { featureType: "transit", stylers: [{ visibility: "simplified" }] },
+];
+
+const DEFAULT_START_PLACE = POPULAR_PLACES[0];
+const DEFAULT_DESTINATION_PLACE = POPULAR_PLACES[1];
+
+function getTokenDeep(value) {
   if (!value || typeof value !== "object") return null;
 
-  const keys = ["access_token", "accessToken", "token", "jwt", "auth_token", "session_token"];
+  const keys = [
+    "access_token",
+    "accessToken",
+    "token",
+    "jwt",
+    "auth_token",
+    "session_token",
+  ];
 
   for (const key of keys) {
-    if (typeof value[key] === "string" && value[key].length > 5) return value[key];
+    if (typeof value[key] === "string" && value[key].length > 5) {
+      return value[key];
+    }
   }
 
   for (const key of Object.keys(value)) {
-    const found = findTokenDeep(value[key]);
+    const found = getTokenDeep(value[key]);
     if (found) return found;
   }
 
   return null;
 }
 
+function placeTitle(place) {
+  return (
+    place?.name ||
+    place?.place_name ||
+    place?.display_name ||
+    place?.label ||
+    ""
+  );
+}
+
+function placeSubtitle(place) {
+  return (
+    place?.display_name ||
+    place?.formatted_address ||
+    [place?.area, place?.city, place?.category].filter(Boolean).join(" • ") ||
+    "Location"
+  );
+}
+
+function normalizePlace(place) {
+  if (!place) return null;
+
+  const latitude = Number(place.latitude ?? place.lat);
+  const longitude = Number(place.longitude ?? place.lng ?? place.lon);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  const name = placeTitle(place) || "Selected location";
+
+  return {
+    ...place,
+    place_id: place.place_id || place.external_place_id || place.id || name,
+    name,
+    display_name: place.display_name || place.label || name,
+    latitude,
+    longitude,
+    lat: latitude,
+    lng: longitude,
+  };
+}
+
 function normalizeCoordinate(point) {
   if (!point) return null;
 
   if (Array.isArray(point) && point.length >= 2) {
-    return { latitude: Number(point[0]), longitude: Number(point[1]) };
+    const first = Number(point[0]);
+    const second = Number(point[1]);
+
+    if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
+
+    /*
+      ORS sometimes returns [longitude, latitude].
+      App map needs { latitude, longitude }.
+    */
+    if (Math.abs(first) > 35 && Math.abs(second) < 35) {
+      return { latitude: second, longitude: first };
+    }
+
+    return { latitude: first, longitude: second };
   }
 
   const latitude = Number(point.latitude ?? point.lat);
   const longitude = Number(point.longitude ?? point.lng ?? point.lon);
 
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
   return { latitude, longitude };
 }
 
-function getRouteCoordinates(route) {
-  const raw = route?.route_coordinates || route?.coordinates || route?.polyline_points || [];
-  const normalized = Array.isArray(raw) ? raw.map(normalizeCoordinate).filter(Boolean) : [];
+function routeCoordinates(route) {
+  const raw =
+    route?.route_coordinates ||
+    route?.coordinates ||
+    route?.polyline ||
+    route?.polyline_points ||
+    route?.geometry ||
+    [];
 
-  if (normalized.length >= 2) return normalized;
-  return FALLBACK_ROUTES[1].route_coordinates;
+  if (!Array.isArray(raw)) return [];
+
+  return raw.map(normalizeCoordinate).filter(Boolean);
 }
 
-function regionForCoordinates(coords) {
-  if (!coords.length) return DEFAULT_REGION;
+function distanceMeters(pointA, pointB) {
+  if (!pointA || !pointB) return Infinity;
 
-  const latitudes = coords.map((p) => p.latitude);
-  const longitudes = coords.map((p) => p.longitude);
+  const radius = 6371000;
+  const lat1 = (pointA.latitude * Math.PI) / 180;
+  const lat2 = (pointB.latitude * Math.PI) / 180;
+  const dLat = ((pointB.latitude - pointA.latitude) * Math.PI) / 180;
+  const dLng = ((pointB.longitude - pointA.longitude) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) *
+      Math.cos(lat2) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function routeDistanceKm(coords, startIndex = 0) {
+  if (!Array.isArray(coords) || coords.length < 2) return 0;
+
+  let totalMeters = 0;
+
+  for (let index = startIndex; index < coords.length - 1; index += 1) {
+    totalMeters += distanceMeters(coords[index], coords[index + 1]);
+  }
+
+  return totalMeters / 1000;
+}
+
+function closestRoutePointIndex(currentLocation, coords = []) {
+  if (!currentLocation || !coords.length) return 0;
+
+  let closestIndex = 0;
+  let closestDistance = Infinity;
+
+  coords.forEach((point, index) => {
+    const currentDistance = distanceMeters(currentLocation, point);
+
+    if (currentDistance < closestDistance) {
+      closestDistance = currentDistance;
+      closestIndex = index;
+    }
+  });
+
+  return closestIndex;
+}
+
+function getClosestPointOnRoute(currentLocation, coords = []) {
+  if (!currentLocation || !coords.length) return null;
+
+  let closestPoint = coords[0];
+  let closestIndex = 0;
+  let closestDistance = Infinity;
+
+  coords.forEach((point, index) => {
+    const currentDistance = distanceMeters(currentLocation, point);
+
+    if (currentDistance < closestDistance) {
+      closestDistance = currentDistance;
+      closestPoint = point;
+      closestIndex = index;
+    }
+  });
+
+  return { point: closestPoint, index: closestIndex, distance: closestDistance };
+}
+
+function bearingBetween(pointA, pointB) {
+  if (!pointA || !pointB) return 0;
+
+  const lat1 = (pointA.latitude * Math.PI) / 180;
+  const lat2 = (pointB.latitude * Math.PI) / 180;
+  const lngDiff = ((pointB.longitude - pointA.longitude) * Math.PI) / 180;
+
+  const y = Math.sin(lngDiff) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(lngDiff);
+
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+  return (bearing + 360) % 360;
+}
+
+function regionForCoordinates(coords, fallback = DEFAULT_REGION) {
+  if (!Array.isArray(coords) || coords.length === 0) return fallback;
+
+  const latitudes = coords.map((point) => point.latitude);
+  const longitudes = coords.map((point) => point.longitude);
+
   const minLat = Math.min(...latitudes);
   const maxLat = Math.max(...latitudes);
   const minLng = Math.min(...longitudes);
@@ -213,271 +400,672 @@ function regionForCoordinates(coords) {
   return {
     latitude: (minLat + maxLat) / 2,
     longitude: (minLng + maxLng) / 2,
-    latitudeDelta: Math.max(maxLat - minLat + 0.08, 0.08),
-    longitudeDelta: Math.max(maxLng - minLng + 0.08, 0.08),
+    latitudeDelta: Math.max(maxLat - minLat + 0.08, 0.035),
+    longitudeDelta: Math.max(maxLng - minLng + 0.08, 0.035),
   };
 }
 
-function normalizeRoute(route) {
+function normalizeStep(step, index, coords = []) {
+  const point =
+    normalizeCoordinate(step) ||
+    normalizeCoordinate(step?.location) ||
+    normalizeCoordinate(step?.coordinate) ||
+    coords[Math.min(index, Math.max(coords.length - 1, 0))] ||
+    null;
+
+  return {
+    ...step,
+    step_index: Number(step?.step_index ?? step?.index ?? index),
+    instruction:
+      step?.instruction ||
+      step?.text ||
+      step?.name ||
+      (index === 0 ? "Start navigation" : "Continue on selected route"),
+    distance_m: Number(step?.distance_m ?? step?.distance ?? 0),
+    duration_min: Number(step?.duration_min ?? step?.duration ?? 0),
+    maneuver: step?.maneuver || step?.type || "continue",
+    latitude: point?.latitude,
+    longitude: point?.longitude,
+  };
+}
+
+function normalizeTrafficSegment(segment, index = 0) {
+  const raw =
+    segment?.coordinates ||
+    segment?.route_coordinates ||
+    segment?.points ||
+    [];
+
+  const coordinates = Array.isArray(raw)
+    ? raw.map(normalizeCoordinate).filter(Boolean)
+    : [];
+
+  return {
+    id: segment?.id || segment?.segment_id || `traffic-${index}`,
+    coordinates,
+    severity:
+      segment?.severity ||
+      segment?.traffic_level ||
+      segment?.congestion_score ||
+      segment?.level ||
+      0,
+    delay_min: Number(segment?.delay_min ?? segment?.delay_minutes ?? 0),
+  };
+}
+function normalizeIncident(incident, index = 0) {
+  const coord =
+    normalizeCoordinate(incident) ||
+    normalizeCoordinate(incident?.coordinate) ||
+    normalizeCoordinate(incident?.location) ||
+    null;
+
+  return {
+    ...incident,
+    id: incident?.id || incident?.incident_id || `incident-${index}`,
+    type: incident?.type || incident?.category || "incident",
+    title:
+      incident?.title ||
+      incident?.description ||
+      incident?.type ||
+      "Road alert",
+    description: incident?.description || incident?.message || "Reported on route",
+    latitude: coord?.latitude,
+    longitude: coord?.longitude,
+  };
+}
+
+function normalizeParking(item, index = 0) {
+  const availability = Number(
+    item?.availability ?? item?.availability_percent ?? item?.score ?? 0
+  );
+
+  return {
+    id: item?.id || item?.zone_id || `parking-${index}`,
+    name:
+      item?.name ||
+      item?.zone_name ||
+      `Parking Zone ${String.fromCharCode(65 + index)}`,
+    availability,
+    difficulty:
+      item?.difficulty ||
+      item?.difficulty_rating ||
+      (availability > 65 ? "Low" : availability > 35 ? "Medium" : "High"),
+    walk_min: Number(
+      item?.walk_min ?? item?.walking_time_min ?? item?.walking_minutes ?? 3
+    ),
+  };
+}
+
+function normalizeRoute(route, index = 0) {
+  const coords = routeCoordinates(route);
+  const rawSteps =
+    route?.turn_by_turn_steps || route?.steps || route?.route_steps || [];
+
+  const estimatedTime = Number(
+    route?.estimated_time_min ??
+      route?.estimated_time ??
+      route?.duration_min ??
+      0
+  );
+
+  const distanceKm = Number(route?.distance_km ?? route?.distance ?? 0);
+  const trafficDelay = Number(route?.traffic_delay_min ?? route?.delay_min ?? 0);
+  const congestionScore = Number(
+    route?.congestion_score ??
+      route?.traffic_score ??
+      route?.traffic_pressure ??
+      0
+  );
+
   return {
     ...route,
-    route_id: route.route_id || route.id || route.route_code || route.name || "ROUTE-UNKNOWN",
-    route_name: route.route_name || route.name || "FlowSync Route",
-    eta_text: route.eta_text || `${route.estimated_time_min || route.estimated_time || "--"} min`,
-    distance_text: route.distance_text || `${route.distance_km || route.distance || "--"} km`,
-    estimated_time_min: Number(route.estimated_time_min ?? route.estimated_time ?? 0),
-    distance_km: Number(route.distance_km ?? route.distance ?? 0),
-    flowsync_score: Number(route.flowsync_score ?? route.route_score ?? route.score ?? 0),
-    route_coordinates: getRouteCoordinates(route),
-    turn_by_turn_steps: route.turn_by_turn_steps || route.steps || route.route_steps || [],
-    alerts: route.alerts || [],
-    incidents: route.incidents || [],
+
+    route_id:
+      route?.route_id ||
+      route?.route_public_id ||
+      route?.id ||
+      `ROUTE-${String.fromCharCode(65 + index)}`,
+
+    route_name:
+      route?.route_name ||
+      route?.name ||
+      `Route ${String.fromCharCode(65 + index)} - Smart Balanced Route`,
+
+    estimated_time_min: estimatedTime,
+    eta_text: route?.eta_text || `${estimatedTime || "--"} min`,
+
+    distance_km: distanceKm,
+    distance_text: route?.distance_text || `${distanceKm || "--"} km`,
+
+    traffic_provider: route?.traffic_provider || "tomtom-ready",
+    live_traffic: route?.live_traffic === true,
+
+    traffic_delay_min: trafficDelay,
+    congestion_score: congestionScore,
+
+    traffic_display:
+      route?.traffic_display ||
+      (route?.live_traffic
+        ? `TomTom live traffic • ${trafficDelay} min delay`
+        : congestionScore
+        ? `${congestionScore}% traffic pressure`
+        : "Traffic estimate"),
+
+    traffic_segments: Array.isArray(route?.traffic_segments)
+      ? route.traffic_segments.map(normalizeTrafficSegment)
+      : [],
+
+    flowsync_score: Number(
+      route?.flowsync_score ?? route?.route_score ?? route?.score ?? 0
+    ),
+    route_score: Number(
+      route?.route_score ?? route?.flowsync_score ?? route?.score ?? 0
+    ),
+
+    assigned_users: Number(route?.assigned_users ?? route?.current_users ?? 0),
+    road_capacity: Number(route?.road_capacity ?? route?.capacity ?? 0),
+    load_ratio: Number(route?.load_ratio ?? route?.route_load ?? 0),
+    load_status: route?.load_status || "balanced",
+
+    recommendation_reason:
+      route?.recommendation_reason ||
+      route?.reason ||
+      "FlowSync selected this route by balancing ETA, congestion, road capacity, route load, and traffic readiness.",
+
+    route_coordinates: coords,
+
+    turn_by_turn_steps: Array.isArray(rawSteps)
+      ? rawSteps.map((step, stepIndex) => normalizeStep(step, stepIndex, coords))
+      : [],
+
+    alerts: Array.isArray(route?.alerts) ? route.alerts : [],
+
+    incidents: Array.isArray(route?.incidents)
+      ? route.incidents
+          .map(normalizeIncident)
+          .filter((item) => item.latitude && item.longitude)
+      : [],
+
+    parking_predictions: Array.isArray(route?.parking_predictions)
+      ? route.parking_predictions.map(normalizeParking)
+      : [],
+
+    real_geometry: route?.real_geometry === true,
+    mock_fallback: route?.mock_fallback === true,
   };
+}
+
+function routeShapeKey(route) {
+  const coords = routeCoordinates(route);
+
+  if (!coords.length) return "empty-route";
+
+  const sampleCount = 10;
+  const step = Math.max(1, Math.floor(coords.length / sampleCount));
+
+  return coords
+    .filter((_, index) => index % step === 0)
+    .slice(0, sampleCount)
+    .map((point) => `${point.latitude.toFixed(4)},${point.longitude.toFixed(4)}`)
+    .join("|");
+}
+
+function dedupeRoutesByGeometry(routes = []) {
+  const seen = new Set();
+  const uniqueRoutes = [];
+
+  routes.forEach((route) => {
+    const key = routeShapeKey(route);
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueRoutes.push(route);
+    }
+  });
+
+  return uniqueRoutes;
 }
 
 function normalizeRouteResponse(data) {
-  const rawRoutes = data?.all_routes || data?.routes || data?.data?.all_routes || data?.data?.routes || [];
-  const routes = Array.isArray(rawRoutes) && rawRoutes.length > 0 ? rawRoutes.map(normalizeRoute) : FALLBACK_ROUTES;
+  const rawRoutes =
+    data?.all_routes ||
+    data?.routes ||
+    data?.data?.all_routes ||
+    data?.data?.routes ||
+    [];
+
+  const normalizedRoutes = Array.isArray(rawRoutes)
+    ? rawRoutes
+        .map(normalizeRoute)
+        .filter((route) => route.route_coordinates.length >= 2)
+    : [];
+
+  const allRoutes = dedupeRoutesByGeometry(normalizedRoutes);
 
   const recommendedRouteId =
     data?.recommended_route_id ||
     data?.recommended_route?.route_id ||
     data?.data?.recommended_route_id ||
-    routes.find((route) => route.is_recommended)?.route_id ||
-    routes[0]?.route_id;
+    allRoutes.find((route) => route.is_recommended)?.route_id ||
+    allRoutes[0]?.route_id ||
+    null;
 
   return {
-    trip_id: data?.trip_id || data?.request_id || data?.data?.trip_id || `LOCAL-TRIP-${Date.now()}`,
+    trip_id: data?.trip_id || data?.request_id || data?.data?.trip_id || null,
+
     recommended_route_id: recommendedRouteId,
+
     recommendation_reason:
       data?.recommendation_reason ||
       data?.recommended_route?.recommendation_reason ||
-      "FlowSync selected the best balanced route based on ETA, congestion, route load, and incidents.",
-    provider: data?.provider || data?.routing_provider || "flowsync_demo",
-    provider_status: data?.provider_status || "demo_fallback_ready",
-    all_routes: routes,
+      "Best FlowSync route based on travel time, route load, congestion, and provider traffic data.",
+
+    provider:
+      data?.provider ||
+      data?.routing_provider ||
+      data?.data?.provider ||
+      "unknown",
+
+    provider_status:
+      data?.provider_status || data?.data?.provider_status || "unknown",
+
+    traffic_provider:
+      data?.traffic_provider || data?.data?.traffic_provider || "TomTom-ready",
+
+    live_traffic:
+      data?.live_traffic === true || allRoutes.some((route) => route.live_traffic),
+
+    dashboard: data?.dashboard || data?.analytics || data?.data?.dashboard || null,
+
+    parking_predictions: Array.isArray(data?.parking_predictions)
+      ? data.parking_predictions.map(normalizeParking)
+      : [],
+
+    message: data?.message || data?.detail || data?.error || "",
+
+    all_routes: allRoutes,
   };
 }
-function getDistanceMeters(pointA, pointB) {
-  if (!pointA || !pointB) return Infinity;
 
-  const earthRadiusMeters = 6371000;
-  const lat1 = (pointA.latitude * Math.PI) / 180;
-  const lat2 = (pointB.latitude * Math.PI) / 180;
-  const deltaLat = ((pointB.latitude - pointA.latitude) * Math.PI) / 180;
-  const deltaLng = ((pointB.longitude - pointA.longitude) * Math.PI) / 180;
-
-  const a =
-    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-    Math.cos(lat1) *
-      Math.cos(lat2) *
-      Math.sin(deltaLng / 2) *
-      Math.sin(deltaLng / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return earthRadiusMeters * c;
+function progressFromStep(currentStepIndex, stepsLength) {
+  if (!stepsLength) return 0;
+  return Math.min(100, Math.round(((currentStepIndex + 1) / stepsLength) * 100));
 }
 
-function getRouteDistanceKm(coords, startIndex = 0) {
-  if (!coords || coords.length < 2) return 0;
+function compactRouteName(name) {
+  if (!name) return "FlowSync Route";
+  return name.length > 32 ? `${name.slice(0, 29)}...` : name;
+}
 
-  let totalMeters = 0;
+function formatStepDistance(meters) {
+  const value = Number(meters || 0);
 
-  for (let index = startIndex; index < coords.length - 1; index += 1) {
-    totalMeters += getDistanceMeters(coords[index], coords[index + 1]);
+  if (!Number.isFinite(value) || value <= 0) return "";
+
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)} km`;
   }
 
-  return totalMeters / 1000;
+  return `${Math.max(10, Math.round(value / 10) * 10)} m`;
 }
 
-function findClosestRoutePointIndex(currentLocation, coords) {
-  if (!currentLocation || !coords?.length) return 0;
+function maneuverIcon(step) {
+  const text = `${step?.maneuver || ""} ${step?.instruction || ""}`.toLowerCase();
 
-  let closestIndex = 0;
-  let closestDistance = Infinity;
+  if (text.includes("left")) return "↰";
+  if (text.includes("right")) return "↱";
+  if (text.includes("roundabout")) return "⟳";
+  if (text.includes("merge")) return "⇢";
+  if (text.includes("arrive")) return "✓";
 
-  coords.forEach((point, index) => {
-    const distance = getDistanceMeters(currentLocation, point);
-
-    if (distance < closestDistance) {
-      closestDistance = distance;
-      closestIndex = index;
-    }
-  });
-
-  return closestIndex;
+  return "↑";
 }
 
-function getStepCoordinate(step, index, coords) {
-  const directStepPoint = normalizeCoordinate(step);
-
-  if (directStepPoint) return directStepPoint;
-
-  if (coords?.[index]) return coords[index];
-
-  if (coords?.length) return coords[coords.length - 1];
-
-  return null;
+function cleanSpokenInstruction(text = "") {
+  return String(text)
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
+function isCurrentLocationPlace(place) {
+  return (
+    place?.provider_status === "current_location" ||
+    place?.place_id === "device-current-location" ||
+    place?.provider_name === "device_gps" ||
+    place?.name === "Current Location"
+  );
+}
+
+function trafficColor(value) {
+  const text = String(value || "").toLowerCase();
+
+  if (text.includes("heavy") || text.includes("severe") || text.includes("red")) {
+    return COLORS.red;
+  }
+
+  if (
+    text.includes("moderate") ||
+    text.includes("orange") ||
+    text.includes("yellow")
+  ) {
+    return COLORS.amber;
+  }
+
+  if (text.includes("light") || text.includes("green")) {
+    return COLORS.green;
+  }
+
+  const score = Number(value || 0);
+
+  if (score >= 70) return COLORS.red;
+  if (score >= 35) return COLORS.amber;
+
+  return COLORS.green;
+}
+
+function splitRouteIntoTrafficSlices(coords = [], congestionScore = 0) {
+  if (coords.length < 2) return [];
+
+  const slices = [];
+  const chunkSize = Math.max(8, Math.floor(coords.length / 7));
+
+  for (let index = 0; index < coords.length - 1; index += chunkSize) {
+    const chunk = coords.slice(index, Math.min(index + chunkSize + 1, coords.length));
+
+    if (chunk.length < 2) continue;
+
+    const score = Math.max(
+      0,
+      Math.min(100, Number(congestionScore || 0) + (index % 3) * 7)
+    );
+
+    slices.push({
+      id: `estimate-${index}`,
+      coordinates: chunk,
+      severity: score,
+    });
+  }
+
+  return slices;
+}
 export default function App() {
   const mapRef = useRef(null);
-  const locationWatcherRef = useRef(null);
-const currentStepIndexRef = useRef(0);
-const routeCoordinatesRef = useRef([]);
-const turnStepsRef = useRef([]);
-const selectedRouteRef = useRef(null);
-const sessionIdRef = useRef("");
+  const watcherRef = useRef(null);
+  const simulationRef = useRef(null);
+
+  const selectedRouteRef = useRef(null);
+  const routeCoordsRef = useRef([]);
+  const turnStepsRef = useRef([]);
+  const currentStepIndexRef = useRef(0);
+  const sessionIdRef = useRef("");
+  const cameraFollowingRef = useRef(true);
+  const lastSpokenStepRef = useRef(-1);
 
   const [screen, setScreen] = useState("login");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
 
   const [email, setEmail] = useState("driver@flowsync.local");
   const [password, setPassword] = useState(DEMO_PASSWORD);
   const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
 
-  const [startLocation, setStartLocation] = useState("Dubai Mall");
-  const [destination, setDestination] = useState("Dubai Marina");
-  const [startSuggestions, setStartSuggestions] = useState([]);
-const [destinationSuggestions, setDestinationSuggestions] = useState([]);
-const [searchingStart, setSearchingStart] = useState(false);
-const [searchingDestination, setSearchingDestination] = useState(false);
-const [selectedStartPlace, setSelectedStartPlace] = useState(null);
-const [selectedDestinationPlace, setSelectedDestinationPlace] = useState(null);
-  const [routePreference, setRoutePreference] = useState("balanced");
+  const [startLocation, setStartLocation] = useState(DEFAULT_START_PLACE.name);
+  const [destination, setDestination] = useState(DEFAULT_DESTINATION_PLACE.name);
 
-  const [tripId, setTripId] = useState(null);
-  const [routes, setRoutes] = useState(FALLBACK_ROUTES);
-  const [recommendedRouteId, setRecommendedRouteId] = useState("ROUTE-D");
-  const [selectedRouteId, setSelectedRouteId] = useState("ROUTE-D");
-  const [providerStatus, setProviderStatus] = useState("Demo fallback active");
-  const [recommendationReason, setRecommendationReason] = useState(
-    "FlowSync recommends Route D because it balances travel time with lower congestion and route load."
+  const [selectedStartPlace, setSelectedStartPlace] =
+    useState(DEFAULT_START_PLACE);
+
+  const [selectedDestinationPlace, setSelectedDestinationPlace] = useState(
+    DEFAULT_DESTINATION_PLACE
   );
 
-  const [mapRegion, setMapRegion] = useState(regionForCoordinates(FALLBACK_ROUTES[1].route_coordinates));
+  const [startSuggestions, setStartSuggestions] = useState([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState([]);
+  const [searchingStart, setSearchingStart] = useState(false);
+  const [searchingDestination, setSearchingDestination] = useState(false);
+
+  const [routePreference, setRoutePreference] = useState("balanced");
+
+  const [routes, setRoutes] = useState([]);
+  const [tripId, setTripId] = useState(null);
+  const [recommendedRouteId, setRecommendedRouteId] = useState(null);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
+  const [hasRouteResult, setHasRouteResult] = useState(false);
+
+  const [providerStatus, setProviderStatus] = useState("Ready");
+  const [trafficStatus, setTrafficStatus] = useState("Traffic ready");
+
+  const [recommendationReason, setRecommendationReason] = useState(
+    "Find a route to see FlowSync recommendation details."
+  );
+
+  const [mapRegion, setMapRegion] = useState(DEFAULT_REGION);
   const [userLocation, setUserLocation] = useState(null);
+  const [gpsHeading, setGpsHeading] = useState(0);
+  const [cameraFollowing, setCameraFollowing] = useState(true);
+  const [navPreviewMode, setNavPreviewMode] = useState(false);
+
   const [sessionId, setSessionId] = useState("");
+  const [isTracking, setIsTracking] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [liveRemainingDistanceKm, setLiveRemainingDistanceKm] = useState(null);
+  const [liveRemainingEtaMin, setLiveRemainingEtaMin] = useState(null);
   const [tripSummary, setTripSummary] = useState(null);
-const [isTracking, setIsTracking] = useState(false);
-const [liveRemainingDistanceKm, setLiveRemainingDistanceKm] = useState(null);
-const [liveRemainingEtaMin, setLiveRemainingEtaMin] = useState(null);
-const [homeSheetExpanded, setHomeSheetExpanded] = useState(false);
-const [homeSheetHidden, setHomeSheetHidden] = useState(false);  
-const [routeSheetMode, setRouteSheetMode] = useState("expanded");
-const selectedRoute = useMemo(() => {
-    return (
-      routes.find((route) => route.route_id === selectedRouteId) ||
-      routes.find((route) => route.route_id === recommendedRouteId) ||
-      routes[0]
-    );
-  }, [routes, selectedRouteId, recommendedRouteId]);
 
-  const routeCoordinates = useMemo(() => getRouteCoordinates(selectedRoute), [selectedRoute]);
-  const turnSteps = selectedRoute?.turn_by_turn_steps || [];
-  const activeStep = turnSteps[currentStepIndex] || turnSteps[0];
-useEffect(() => {
-  currentStepIndexRef.current = currentStepIndex;
-}, [currentStepIndex]);
+  const [homeSheetExpanded, setHomeSheetExpanded] = useState(false);
+  const [homeSheetHidden, setHomeSheetHidden] = useState(false);
+  const [routeSheetMode, setRouteSheetMode] = useState("expanded");
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
-useEffect(() => {
-  routeCoordinatesRef.current = routeCoordinates;
-}, [routeCoordinates]);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [parkingPredictions, setParkingPredictions] = useState([]);
+  const [localReports, setLocalReports] = useState([]);
+  const [savedPlaces, setSavedPlaces] = useState(POPULAR_PLACES.slice(0, 4));
 
-useEffect(() => {
-  turnStepsRef.current = turnSteps;
-}, [turnSteps]);
+  const selectedRoute = useMemo(() => {
+    if (!hasRouteResult || routes.length === 0) return null;
 
-useEffect(() => {
-  selectedRouteRef.current = selectedRoute;
-}, [selectedRoute]);
-
-useEffect(() => {
-  sessionIdRef.current = sessionId;
-}, [sessionId]);
-
-useEffect(() => {
-  return () => {
-    if (locationWatcherRef.current) {
-      locationWatcherRef.current.remove();
-      locationWatcherRef.current = null;
+    if (selectedRouteId) {
+      return routes.find((route) => route.route_id === selectedRouteId) || null;
     }
-  };
-}, []);
-  const progressPercent = turnSteps.length
-    ? Math.round(((currentStepIndex + 1) / turnSteps.length) * 100)
-    : sessionId
-    ? 20
-    : 0;
 
-  const fallbackRemainingEta = Math.max(
-  Math.round((selectedRoute?.estimated_time_min || 25) * (1 - progressPercent / 100)),
-  1
-);
+    if (recommendedRouteId) {
+      return routes.find((route) => route.route_id === recommendedRouteId) || null;
+    }
 
-const fallbackRemainingDistance = Math.max(
-  ((selectedRoute?.distance_km || 0) * (1 - progressPercent / 100)).toFixed(1),
-  0
-);
+    return routes[0] || null;
+  }, [hasRouteResult, routes, selectedRouteId, recommendedRouteId]);
 
-const displayRemainingEta = liveRemainingEtaMin || fallbackRemainingEta;
-const displayRemainingDistance = liveRemainingDistanceKm ?? fallbackRemainingDistance;
-const sheetPanResponder = useMemo(
-  () =>
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10,
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dy > 90) {
-          setHomeSheetHidden(true);
-          setHomeSheetExpanded(false);
-          return;
-        }
+  const selectedRouteCoordinates = useMemo(
+    () => routeCoordinates(selectedRoute),
+    [selectedRoute]
+  );
 
-        if (gesture.dy > 30) {
-          setHomeSheetHidden(false);
-          setHomeSheetExpanded(false);
-          return;
-        }
+  const turnSteps = selectedRoute?.turn_by_turn_steps || [];
+  const activeStep = turnSteps[currentStepIndex] || turnSteps[0] || null;
+  const nextStep = turnSteps[currentStepIndex + 1] || null;
 
-        if (gesture.dy < -30) {
-          setHomeSheetHidden(false);
-          setHomeSheetExpanded(true);
-        }
+  const progressPercent = progressFromStep(currentStepIndex, turnSteps.length);
+  const isFinalStep =
+    turnSteps.length > 0 && currentStepIndex >= turnSteps.length - 1;
+
+  const hasArrived = isFinalStep || progressPercent >= 96;
+
+  const fallbackEta = Math.max(
+    Math.round((selectedRoute?.estimated_time_min || 1) * (1 - progressPercent / 100)),
+    1
+  );
+
+  const fallbackDistance = Math.max(
+    Number(((selectedRoute?.distance_km || 0) * (1 - progressPercent / 100)).toFixed(1)),
+    0
+  );
+
+  const displayEta = liveRemainingEtaMin ?? fallbackEta;
+  const displayDistance = liveRemainingDistanceKm ?? fallbackDistance;
+
+  const routeIncidents = useMemo(() => {
+    const backendIncidents = selectedRoute?.incidents || [];
+
+    const dashboardAlerts = alerts
+      .map(normalizeIncident)
+      .filter((item) => item.latitude && item.longitude)
+      .slice(0, 10);
+
+    return [...backendIncidents, ...dashboardAlerts, ...localReports];
+  }, [selectedRoute?.incidents, alerts, localReports]);
+
+  const routeTrafficSegments = useMemo(() => {
+    const backendSegments = selectedRoute?.traffic_segments || [];
+
+    if (backendSegments.some((segment) => segment.coordinates?.length > 1)) {
+      return backendSegments;
+    }
+
+    return splitRouteIntoTrafficSlices(
+      selectedRouteCoordinates,
+      selectedRoute?.congestion_score || 0
+    );
+  }, [
+    selectedRoute?.traffic_segments,
+    selectedRoute?.congestion_score,
+    selectedRouteCoordinates,
+  ]);
+
+  const parkingForDisplay = useMemo(() => {
+    if (selectedRoute?.parking_predictions?.length) {
+      return selectedRoute.parking_predictions;
+    }
+
+    if (parkingPredictions?.length) {
+      return parkingPredictions;
+    }
+
+    return [
+      {
+        id: "zone-a",
+        name: "Parking Zone A",
+        availability: 82,
+        difficulty: "Low",
+        walk_min: 3,
       },
-    }),
-  []
-);
-const routeSheetPanResponder = useMemo(
-  () =>
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10,
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dy > 90) {
-          setRouteSheetMode("hidden");
-          return;
-        }
-
-        if (gesture.dy > 30) {
-          setRouteSheetMode("collapsed");
-          return;
-        }
-
-        if (gesture.dy < -30) {
-          setRouteSheetMode("expanded");
-        }
+      {
+        id: "zone-b",
+        name: "Parking Zone B",
+        availability: 48,
+        difficulty: "Medium",
+        walk_min: 5,
       },
-    }),
-  []
-);
+      {
+        id: "zone-c",
+        name: "Parking Zone C",
+        availability: 17,
+        difficulty: "High",
+        walk_min: 2,
+      },
+    ];
+  }, [selectedRoute?.parking_predictions, parkingPredictions]);
+
+  useEffect(() => {
+    selectedRouteRef.current = selectedRoute;
+  }, [selectedRoute]);
+
+  useEffect(() => {
+    routeCoordsRef.current = selectedRouteCoordinates;
+  }, [selectedRouteCoordinates]);
+
+  useEffect(() => {
+    turnStepsRef.current = turnSteps;
+  }, [turnSteps]);
+
+  useEffect(() => {
+    currentStepIndexRef.current = currentStepIndex;
+  }, [currentStepIndex]);
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
+    cameraFollowingRef.current = cameraFollowing;
+  }, [cameraFollowing]);
+
+  useEffect(() => {
+    if (screen !== "nav") return;
+    if (!activeStep?.instruction) return;
+    if (lastSpokenStepRef.current === currentStepIndex) return;
+
+    lastSpokenStepRef.current = currentStepIndex;
+    speakInstruction(activeStep.instruction);
+  }, [screen, currentStepIndex, activeStep?.instruction]);
+
+  useEffect(() => {
+    return () => {
+      stopLiveTracking();
+      Speech.stop();
+    };
+  }, []);
+
+  const homePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 12,
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dy > 90) {
+            setHomeSheetHidden(true);
+            setHomeSheetExpanded(false);
+            return;
+          }
+
+          if (gesture.dy > 30) {
+            setHomeSheetHidden(false);
+            setHomeSheetExpanded(false);
+            return;
+          }
+
+          if (gesture.dy < -30) {
+            setHomeSheetHidden(false);
+            setHomeSheetExpanded(true);
+          }
+        },
+      }),
+    []
+  );
+
+  const routePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 12,
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dy > 90) {
+            setRouteSheetMode("hidden");
+            return;
+          }
+
+          if (gesture.dy > 30) {
+            setRouteSheetMode("collapsed");
+            return;
+          }
+
+          if (gesture.dy < -30) {
+            setRouteSheetMode("expanded");
+          }
+        },
+      }),
+    []
+  );
+
   async function apiRequest(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: {
         "Content-Type": "application/json",
-        ...(token && token !== "DEMO_LOCAL_TOKEN" ? { Authorization: `Bearer ${token}` } : {}),
+        ...(token && token !== "LOCAL_TOKEN"
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
         ...(options.headers || {}),
       },
       ...options,
@@ -493,11 +1081,22 @@ const routeSheetPanResponder = useMemo(
     }
 
     if (!response.ok) {
-      const message = typeof data.detail === "string" ? data.detail : data.message || data.error || `HTTP ${response.status}`;
+      const message =
+        typeof data.detail === "string"
+          ? data.detail
+          : data.message || data.error || `HTTP ${response.status}`;
       throw new Error(message);
     }
 
     return data;
+  }
+
+  async function optionalApiRequest(path, options = {}) {
+    try {
+      return await apiRequest(path, options);
+    } catch {
+      return null;
+    }
   }
 
   async function runAction(action) {
@@ -513,6 +1112,43 @@ const routeSheetPanResponder = useMemo(
     }
   }
 
+  function showToast(message) {
+    setToast(message);
+    setTimeout(() => setToast(""), 3200);
+  }
+
+  function speakInstruction(text) {
+    const clean = cleanSpokenInstruction(text);
+
+    if (!clean) return;
+
+    Speech.stop();
+    Speech.speak(clean, {
+      language: "en",
+      pitch: 1,
+      rate: 0.95,
+    });
+  }
+
+  function clearRouteResult() {
+    stopLiveTracking();
+
+    setRoutes([]);
+    setTripId(null);
+    setRecommendedRouteId(null);
+    setSelectedRouteId(null);
+    setHasRouteResult(false);
+    setCurrentStepIndex(0);
+    setLiveRemainingDistanceKm(null);
+    setLiveRemainingEtaMin(null);
+    setHomeSheetHidden(false);
+    setHomeSheetExpanded(false);
+    setRouteSheetMode("expanded");
+    setTripSummary(null);
+    setNavPreviewMode(false);
+    lastSpokenStepRef.current = -1;
+  }
+
   async function login() {
     await runAction(async () => {
       let data = {};
@@ -526,36 +1162,162 @@ const routeSheetPanResponder = useMemo(
         data = {};
       }
 
-      const nextToken = findTokenDeep(data) || "DEMO_LOCAL_TOKEN";
-      const userData = data.user || data.data?.user || {
-        name: "FlowSync Driver",
-        email,
-        role: email.includes("admin") ? "admin" : email.includes("emergency") ? "emergency" : "driver",
-      };
+      const nextToken = getTokenDeep(data) || "LOCAL_TOKEN";
+
+      const nextUser =
+        data.user ||
+        data.data?.user ||
+        {
+          name: email.includes("admin")
+            ? "FlowSync Admin"
+            : email.includes("emergency")
+            ? "FlowSync Emergency"
+            : "FlowSync Driver",
+          email,
+          role: email.includes("admin")
+            ? "admin"
+            : email.includes("emergency")
+            ? "emergency"
+            : "driver",
+        };
 
       setToken(nextToken);
-      setUser(userData);
+      setUser(nextUser);
       setScreen("home");
+      refreshOperationsData();
     });
   }
 
-  async function getMyLocation() {
-    await runAction(async () => {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") throw new Error("Location permission was denied.");
+  async function refreshOperationsData() {
+    const [dashboard, analytics, alertsData, saved, prefs] = await Promise.all([
+      optionalApiRequest("/api/dashboard/summary"),
+      optionalApiRequest("/api/analytics/dashboard"),
+      optionalApiRequest("/api/alerts"),
+      optionalApiRequest("/api/saved-places"),
+      optionalApiRequest("/api/user/preferences"),
+    ]);
 
-      const current = await Location.getCurrentPositionAsync({});
-      const nextLocation = {
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-      };
+    setDashboardData(dashboard || analytics || null);
 
-      setUserLocation(nextLocation);
-      setMapRegion({ ...nextLocation, latitudeDelta: 0.04, longitudeDelta: 0.04 });
-    });
+    const rawAlerts =
+      alertsData?.alerts || alertsData?.results || alertsData?.data || [];
+
+    if (Array.isArray(rawAlerts)) {
+      setAlerts(rawAlerts);
+    }
+
+    const rawSaved = saved?.saved_places || saved?.places || saved?.data || [];
+
+    if (Array.isArray(rawSaved) && rawSaved.length) {
+      setSavedPlaces(rawSaved.map(normalizePlace).filter(Boolean));
+    }
+
+    if (prefs?.route_preference) {
+      setRoutePreference(prefs.route_preference);
+    }
   }
-  async function useCurrentLocationAsStart() {
-  await runAction(async () => {
+
+  function chooseQuickAccount(account) {
+    setEmail(account.email);
+    setPassword(DEMO_PASSWORD);
+  }
+
+  function logout() {
+    Alert.alert("Logout?", "Your current mobile session will close.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: () => {
+          stopLiveTracking();
+          setToken("");
+          setUser(null);
+          setScreen("login");
+          setSessionId("");
+        },
+      },
+    ]);
+  }
+    async function searchPlaces(query, type) {
+    const cleanQuery = query.trim();
+
+    if (cleanQuery.length < 2) {
+      if (type === "start") setStartSuggestions([]);
+      if (type === "destination") setDestinationSuggestions([]);
+      return;
+    }
+
+    if (type === "start") setSearchingStart(true);
+    if (type === "destination") setSearchingDestination(true);
+
+    try {
+      const data = await apiRequest(
+        `/api/locations/search?q=${encodeURIComponent(cleanQuery)}`
+      );
+
+      const rawResults = data?.results || data?.locations || data?.data || [];
+      const results = Array.isArray(rawResults)
+        ? rawResults.map(normalizePlace).filter(Boolean)
+        : [];
+
+      if (type === "start") setStartSuggestions(results.slice(0, 7));
+      if (type === "destination") setDestinationSuggestions(results.slice(0, 7));
+    } catch {
+      const localResults = POPULAR_PLACES.filter((place) =>
+        `${place.name} ${place.display_name}`
+          .toLowerCase()
+          .includes(cleanQuery.toLowerCase())
+      );
+
+      if (type === "start") setStartSuggestions(localResults);
+      if (type === "destination") setDestinationSuggestions(localResults);
+
+      setError(
+        "Location search is using saved Dubai places until backend search responds."
+      );
+    } finally {
+      if (type === "start") setSearchingStart(false);
+      if (type === "destination") setSearchingDestination(false);
+    }
+  }
+
+  function selectSuggestion(place, type) {
+    const normalized = normalizePlace(place);
+
+    if (!normalized) {
+      setError("Selected place is missing coordinates.");
+      return;
+    }
+
+    clearRouteResult();
+    Keyboard.dismiss();
+
+    if (type === "start") {
+      setStartLocation(normalized.name);
+      setSelectedStartPlace(normalized);
+      setStartSuggestions([]);
+    }
+
+    if (type === "destination") {
+      setDestination(normalized.name);
+      setSelectedDestinationPlace(normalized);
+      setDestinationSuggestions([]);
+    }
+
+    mapRef.current?.animateCamera(
+      {
+        center: {
+          latitude: normalized.latitude,
+          longitude: normalized.longitude,
+        },
+        zoom: 14,
+        pitch: 28,
+      },
+      { duration: 650 }
+    );
+  }
+
+  async function getDeviceLocation() {
     const permission = await Location.requestForegroundPermissionsAsync();
 
     if (permission.status !== "granted") {
@@ -566,1278 +1328,1822 @@ const routeSheetPanResponder = useMemo(
       accuracy: Location.Accuracy.High,
     });
 
-    const currentCoords = {
+    const coords = {
       latitude: current.coords.latitude,
       longitude: current.coords.longitude,
     };
 
-    let locationName = "Current Location";
+    const heading = Number.isFinite(current.coords.heading)
+      ? current.coords.heading
+      : 0;
 
-    try {
-      const reverseResults = await Location.reverseGeocodeAsync(currentCoords);
-      const firstResult = reverseResults?.[0];
+    return { coords, heading, raw: current };
+  }
 
-      if (firstResult) {
-        const parts = [
-          firstResult.name,
-          firstResult.street,
-          firstResult.district,
-          firstResult.city,
-        ].filter(Boolean);
+  async function useCurrentLocationAsStart() {
+    await runAction(async () => {
+      const { coords, heading } = await getDeviceLocation();
+      let label = "Current Location";
 
-        locationName = parts.length ? parts.join(", ") : "Current Location";
+      try {
+        const reverse = await Location.reverseGeocodeAsync(coords);
+        const first = reverse?.[0];
+
+        if (first) {
+          const parts = [
+            first.name,
+            first.street,
+            first.district,
+            first.city,
+          ].filter(Boolean);
+
+          if (parts.length) {
+            label = parts.join(", ");
+          }
+        }
+      } catch {
+        label = "Current Location";
       }
-    } catch {
-      locationName = "Current Location";
-    }
 
-    setUserLocation(currentCoords);
-    setStartLocation(locationName);
-    setSelectedStartPlace({
-      place_id: "device-current-location",
-      name: locationName,
-      display_name: locationName,
-      latitude: currentCoords.latitude,
-      longitude: currentCoords.longitude,
-      lat: currentCoords.latitude,
-      lng: currentCoords.longitude,
-      provider_name: "device_gps",
-      provider_status: "current_location",
-      category: "Current location",
-    });
+      clearRouteResult();
 
-    setStartSuggestions([]);
-
-    setMapRegion({
-      ...currentCoords,
-      latitudeDelta: 0.04,
-      longitudeDelta: 0.04,
-    });
-
-    mapRef.current?.animateCamera(
-      {
-        center: currentCoords,
-        zoom: 16,
-        pitch: 45,
-      },
-      { duration: 700 }
-    );
-  });
-}
-
-  async function searchLocations(query, type) {
-  const cleanQuery = query.trim();
-
-  if (cleanQuery.length < 2) {
-    if (type === "start") setStartSuggestions([]);
-    if (type === "destination") setDestinationSuggestions([]);
-    return;
-  }
-
-  if (type === "start") setSearchingStart(true);
-  if (type === "destination") setSearchingDestination(true);
-
-  try {
-    const data = await apiRequest(
-      `/api/locations/search?q=${encodeURIComponent(cleanQuery)}`
-    );
-
-    const results =
-      data?.results ||
-      data?.locations ||
-      data?.data ||
-      [];
-
-    if (type === "start") setStartSuggestions(results);
-    if (type === "destination") setDestinationSuggestions(results);
-  } catch {
-    const localResults = UAE_LOCATIONS.filter((place) =>
-      place.name.toLowerCase().includes(cleanQuery.toLowerCase())
-    );
-
-    if (type === "start") setStartSuggestions(localResults);
-    if (type === "destination") setDestinationSuggestions(localResults);
-  } finally {
-    if (type === "start") setSearchingStart(false);
-    if (type === "destination") setSearchingDestination(false);
-  }
-}
-
-function selectLocationSuggestion(place, type) {
-  const name = place.name || place.place_name || place.display_name || place.label;
-
-  if (!name) return;
-
-  if (type === "start") {
-    setStartLocation(name);
-    setSelectedStartPlace(place);
-    setStartSuggestions([]);
-  }
-
-  if (type === "destination") {
-    setDestination(name);
-    setSelectedDestinationPlace(place);
-    setDestinationSuggestions([]);
-  }
-}
-
-function updateNavigationProgressFromLocation(currentLocation) {
-  const coords = routeCoordinatesRef.current;
-  const steps = turnStepsRef.current;
-  const route = selectedRouteRef.current;
-
-  if (!currentLocation || !coords?.length) return;
-
-  const closestRouteIndex = findClosestRoutePointIndex(currentLocation, coords);
-  const remainingKm = getRouteDistanceKm(coords, closestRouteIndex);
-
-  const totalRouteKm =
-    Number(route?.distance_km) || getRouteDistanceKm(coords, 0) || 1;
-
-  const totalRouteEta = Number(route?.estimated_time_min) || 25;
-
-  const calculatedEta = Math.max(
-    Math.round((remainingKm / totalRouteKm) * totalRouteEta),
-    1
-  );
-
-  setLiveRemainingDistanceKm(Number(remainingKm.toFixed(1)));
-  setLiveRemainingEtaMin(calculatedEta);
-
-  const activeIndex = currentStepIndexRef.current;
-  const nextStep = steps[activeIndex + 1];
-
-  if (!nextStep) return;
-
-  const nextStepPoint = getStepCoordinate(nextStep, activeIndex + 1, coords);
-
-  if (!nextStepPoint) return;
-
-  const distanceToNextStep = getDistanceMeters(currentLocation, nextStepPoint);
-
-  if (distanceToNextStep <= 80 && activeIndex < steps.length - 1) {
-    const nextIndex = activeIndex + 1;
-
-    currentStepIndexRef.current = nextIndex;
-    setCurrentStepIndex(nextIndex);
-
-    const activeSession = sessionIdRef.current;
-
-    if (activeSession && !activeSession.startsWith("LOCAL-")) {
-      apiRequest("/api/trips/progress", {
-        method: "POST",
-        body: JSON.stringify({
-          session_id: activeSession,
-          current_step_index: nextIndex,
-        }),
-      }).catch(() => {
-        // Do not stop navigation if backend progress update fails.
-      });
-    }
-  }
-}
-
-async function startLiveTracking() {
-  if (locationWatcherRef.current) {
-    locationWatcherRef.current.remove();
-    locationWatcherRef.current = null;
-  }
-
-  const permission = await Location.requestForegroundPermissionsAsync();
-
-  if (permission.status !== "granted") {
-    throw new Error("Location permission is required for real navigation.");
-  }
-
-  const current = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.High,
-  });
-
-  const currentLocation = {
-    latitude: current.coords.latitude,
-    longitude: current.coords.longitude,
-  };
-
-  setUserLocation(currentLocation);
-  updateNavigationProgressFromLocation(currentLocation);
-
-  mapRef.current?.animateCamera(
-    {
-      center: currentLocation,
-      zoom: 17,
-      pitch: 55,
-      heading: current.coords.heading || 0,
-    },
-    { duration: 800 }
-  );
-
-  locationWatcherRef.current = await Location.watchPositionAsync(
-    {
-      accuracy: Location.Accuracy.High,
-      timeInterval: 2000,
-      distanceInterval: 10,
-    },
-    (location) => {
-      const nextLocation = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+      const currentPlace = {
+        place_id: "device-current-location",
+        name: "Current Location",
+        display_name: label,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        lat: coords.latitude,
+        lng: coords.longitude,
+        provider_name: "device_gps",
+        provider_status: "current_location",
+        category: "GPS",
       };
 
-      setUserLocation(nextLocation);
-      updateNavigationProgressFromLocation(nextLocation);
+      setUserLocation(coords);
+      setGpsHeading(heading);
+      setCameraFollowing(true);
+      setStartLocation("Current Location");
+      setSelectedStartPlace(currentPlace);
+      setStartSuggestions([]);
 
       mapRef.current?.animateCamera(
         {
-          center: nextLocation,
-          zoom: 17,
-          pitch: 55,
-          heading: location.coords.heading || 0,
+          center: coords,
+          zoom: 16,
+          pitch: 35,
+          heading,
         },
         { duration: 700 }
       );
-    }
-  );
-
-  setIsTracking(true);
-}
-
-function stopLiveTracking() {
-  if (locationWatcherRef.current) {
-    locationWatcherRef.current.remove();
-    locationWatcherRef.current = null;
-  }
-
-  setIsTracking(false);
-}
-async function recommendRoute() {
-  const cleanStart = startLocation.trim();
-  const cleanDestination = destination.trim();
-
-  if (!cleanStart || !cleanDestination) {
-    setError("Please enter both start location and destination.");
-    return;
-  }
-
-  if (cleanStart.toLowerCase() === cleanDestination.toLowerCase()) {
-    setError("Start and destination cannot be the same.");
-    return;
-  }
-
-  await runAction(async () => {
-      let data;
-
-      try {
-        data = await apiRequest("/api/routes/recommend", {
-          method: "POST",
-          body: JSON.stringify({
-  start_location: cleanStart,
-  destination: cleanDestination,
-
-  start_latitude: selectedStartPlace?.latitude ?? selectedStartPlace?.lat,
-  start_longitude:
-    selectedStartPlace?.longitude ??
-    selectedStartPlace?.lng ??
-    selectedStartPlace?.lon,
-
-  destination_latitude:
-    selectedDestinationPlace?.latitude ?? selectedDestinationPlace?.lat,
-  destination_longitude:
-    selectedDestinationPlace?.longitude ??
-    selectedDestinationPlace?.lng ??
-    selectedDestinationPlace?.lon,
-
-  vehicle_type: "car",
-  route_preference: routePreference,
-  user_role: user?.role || "driver",
-}),
-        });
-      } catch {
-        data = {
-          trip_id: `LOCAL-TRIP-${Date.now()}`,
-          recommended_route_id: "ROUTE-D",
-          provider: "local_demo",
-          provider_status: "backend_unavailable_demo_active",
-          all_routes: FALLBACK_ROUTES,
-        };
-      }
-
-      const normalized = normalizeRouteResponse(data);
-      setTripId(normalized.trip_id);
-      setRoutes(normalized.all_routes);
-      setRecommendedRouteId(normalized.recommended_route_id);
-      setSelectedRouteId(normalized.recommended_route_id);
-      setRecommendationReason(normalized.recommendation_reason);
-      setProviderStatus(`${normalized.provider} • ${normalized.provider_status}`);
-
-      const defaultRoute =
-        normalized.all_routes.find((route) => route.route_id === normalized.recommended_route_id) ||
-        normalized.all_routes[0];
-
-      const coords = getRouteCoordinates(defaultRoute);
-      setMapRegion(regionForCoordinates(coords));
-      setCurrentStepIndex(0);
-      setTripSummary(null);
-      setScreen("home");
     });
   }
-function recenterOnUserLocation() {
-  if (!userLocation) {
-    getMyLocation();
-    return;
+
+  async function getMyLocation() {
+    await runAction(async () => {
+      const { coords, heading } = await getDeviceLocation();
+
+      setUserLocation(coords);
+      setGpsHeading(heading);
+      setCameraFollowing(true);
+
+      mapRef.current?.animateCamera(
+        {
+          center: coords,
+          zoom: screen === "nav" ? 19 : 16,
+          pitch: screen === "nav" ? 68 : 35,
+          heading,
+        },
+        { duration: 700 }
+      );
+    });
   }
 
-  mapRef.current?.animateCamera(
-    {
-      center: userLocation,
-      zoom: 17,
-      pitch: 55,
-    },
-    { duration: 700 }
-  );
-}
+  function recenterOnUser() {
+    const coords = routeCoordsRef.current || [];
+    const safeLocation = userLocation || coords[0];
 
-  function selectRoute(route) {
-    setSelectedRouteId(route.route_id);
-    setMapRegion(regionForCoordinates(getRouteCoordinates(route)));
-    setCurrentStepIndex(0);
-  }
-
-  async function startTrip() {
-  await runAction(async () => {
-    if (!selectedRoute) {
-      throw new Error("Select a route before starting navigation.");
+    if (!safeLocation) {
+      getMyLocation();
+      return;
     }
 
-    const body = {
-      trip_id: tripId,
-      selected_route_id: selectedRoute.route_id,
-      route_name: selectedRoute.route_name,
-      start_location: startLocation,
-      destination,
-      selected_route: selectedRoute,
-      route_steps: selectedRoute.turn_by_turn_steps,
-      current_step_index: 0,
-    };
+    setCameraFollowing(true);
+    cameraFollowingRef.current = true;
 
-    let data = null;
+    mapRef.current?.animateCamera(
+      {
+        center: safeLocation,
+        zoom: screen === "nav" ? 19 : 15,
+        pitch: screen === "nav" ? 68 : 35,
+        heading: gpsHeading || 0,
+      },
+      { duration: 650 }
+    );
+  }
 
-    try {
-      data = await apiRequest("/api/trips/start", {
+  function swapLocations() {
+    const oldStartText = startLocation;
+    const oldDestinationText = destination;
+    const oldStartPlace = selectedStartPlace;
+    const oldDestinationPlace = selectedDestinationPlace;
+
+    clearRouteResult();
+
+    setStartLocation(oldDestinationText);
+    setDestination(oldStartText);
+    setSelectedStartPlace(oldDestinationPlace);
+    setSelectedDestinationPlace(oldStartPlace);
+  }
+
+  async function recommendRoute() {
+    const cleanStart = startLocation.trim();
+    const cleanDestination = destination.trim();
+
+    if (!cleanStart || !cleanDestination) {
+      setError("Please enter start and destination.");
+      return;
+    }
+
+    if (cleanStart.toLowerCase() === cleanDestination.toLowerCase()) {
+      setError("Start and destination cannot be the same.");
+      return;
+    }
+
+    const usingCurrentLocation = isCurrentLocationPlace(selectedStartPlace);
+
+    if (!usingCurrentLocation && !selectedStartPlace) {
+      setError("Select a start suggestion or use current location.");
+      return;
+    }
+
+    if (!selectedDestinationPlace) {
+      setError("Select destination from suggestions before finding a route.");
+      return;
+    }
+
+    await runAction(async () => {
+      const startPlace = normalizePlace(selectedStartPlace);
+      const destinationPlace = normalizePlace(selectedDestinationPlace);
+
+      if (!startPlace || !destinationPlace) {
+        throw new Error("Selected locations are missing coordinates.");
+      }
+
+      const body = {
+        start_location: usingCurrentLocation ? "Current Location" : cleanStart,
+        destination: cleanDestination,
+
+        start_latitude: startPlace.latitude,
+        start_longitude: startPlace.longitude,
+
+        destination_latitude: destinationPlace.latitude,
+        destination_longitude: destinationPlace.longitude,
+
+        vehicle_type: user?.role === "emergency" ? "emergency" : "car",
+        route_preference: routePreference,
+        user_role: user?.role || "driver",
+
+        include_live_traffic: true,
+        traffic_provider: "tomtom",
+        include_incidents: true,
+        include_parking: true,
+        include_route_load: true,
+        include_analytics: true,
+      };
+
+      console.log("FLOWSYNC FINAL ROUTE REQUEST:", body);
+
+      const data = await apiRequest("/api/routes/recommend", {
         method: "POST",
         body: JSON.stringify(body),
       });
-    } catch {
-      data = null;
-    }
 
-    const nextSession = String(
-      data?.session_id || data?.session?.session_id || `LOCAL-${Date.now()}`
-    );
+      if (data?.same_location) {
+        throw new Error(data.message || "You are already at this location.");
+      }
 
-    setSessionId(nextSession);
-    sessionIdRef.current = nextSession;
+      const normalized = normalizeRouteResponse(data);
 
+      if (!normalized.all_routes.length) {
+        console.log("FLOWSYNC NO ROUTE RESPONSE:", data);
+        throw new Error(
+          normalized.message ||
+            "No drivable route returned. Try a different suggestion or nearby place."
+        );
+      }
+
+      const selectedId =
+        normalized.recommended_route_id || normalized.all_routes[0]?.route_id;
+
+      setTripId(normalized.trip_id);
+      setRoutes(normalized.all_routes);
+      setRecommendedRouteId(selectedId);
+      setSelectedRouteId(selectedId);
+      setRecommendationReason(normalized.recommendation_reason);
+      setProviderStatus(`${normalized.provider} • ${normalized.provider_status}`);
+      setTrafficStatus(
+        normalized.live_traffic
+          ? `${normalized.traffic_provider || "TomTom"} • live traffic`
+          : "Traffic estimate"
+      );
+
+      setDashboardData(normalized.dashboard);
+
+      if (normalized.parking_predictions.length) {
+        setParkingPredictions(normalized.parking_predictions);
+      }
+
+      setHasRouteResult(true);
+      setCurrentStepIndex(0);
+      setTripSummary(null);
+      setHomeSheetHidden(true);
+      setHomeSheetExpanded(false);
+      setRouteSheetMode("expanded");
+      lastSpokenStepRef.current = -1;
+
+      const selected =
+        normalized.all_routes.find((route) => route.route_id === selectedId) ||
+        normalized.all_routes[0];
+
+      const coords = routeCoordinates(selected);
+      setMapRegion(regionForCoordinates(coords));
+
+      setTimeout(() => {
+        mapRef.current?.fitToCoordinates(coords, {
+          edgePadding: {
+            top: 130,
+            right: 76,
+            bottom: 245,
+            left: 76,
+          },
+          animated: true,
+        });
+      }, 250);
+
+      setScreen("home");
+      refreshOperationsData();
+    });
+  }
+
+  function selectRoute(route) {
+    if (!route?.route_id) return;
+
+    setSelectedRouteId(route.route_id);
     setCurrentStepIndex(0);
     currentStepIndexRef.current = 0;
+    setLiveRemainingDistanceKm(null);
+    setLiveRemainingEtaMin(null);
+    lastSpokenStepRef.current = -1;
 
-    setLiveRemainingDistanceKm(selectedRoute.distance_km || null);
-    setLiveRemainingEtaMin(selectedRoute.estimated_time_min || null);
+    const coords = routeCoordinates(route);
 
-    await startLiveTracking();
+    mapRef.current?.fitToCoordinates(coords, {
+      edgePadding: {
+        top: 130,
+        right: 76,
+        bottom: 305,
+        left: 76,
+      },
+      animated: true,
+    });
+  }
 
-    setScreen("nav");
+  function updateProgressFromLocation(currentLocation) {
+    const coords = routeCoordsRef.current;
+    const steps = turnStepsRef.current;
+    const route = selectedRouteRef.current;
 
-    if (!data) {
-      setError("Backend trip start unavailable. Real GPS navigation is still active.");
+    if (!currentLocation || !coords?.length) return;
+
+    const closestIndex = closestRoutePointIndex(currentLocation, coords);
+    const remainingKm = routeDistanceKm(coords, closestIndex);
+    const totalKm = Number(route?.distance_km) || routeDistanceKm(coords, 0) || 1;
+    const totalEta = Number(route?.estimated_time_min) || 1;
+
+    const eta = Math.max(Math.round((remainingKm / totalKm) * totalEta), 0);
+
+    setLiveRemainingDistanceKm(Number(remainingKm.toFixed(1)));
+    setLiveRemainingEtaMin(eta);
+
+    if (steps.length > 0) {
+      const progressRatio = closestIndex / Math.max(coords.length - 1, 1);
+      const nextStepIndex = Math.min(
+        Math.floor(progressRatio * steps.length),
+        steps.length - 1
+      );
+
+      if (nextStepIndex !== currentStepIndexRef.current) {
+        currentStepIndexRef.current = nextStepIndex;
+        setCurrentStepIndex(nextStepIndex);
+      }
+
+      const activeSession = sessionIdRef.current;
+
+      if (activeSession && !activeSession.startsWith("LOCAL-")) {
+        apiRequest("/api/trips/progress", {
+          method: "POST",
+          body: JSON.stringify({
+            session_id: activeSession,
+            current_step_index: nextStepIndex,
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            remaining_distance_km: Number(remainingKm.toFixed(1)),
+            remaining_time_min: eta,
+            progress_percentage: progressFromStep(nextStepIndex, steps.length),
+            selected_route_id: route?.route_id,
+          }),
+        }).catch(() => {});
+      }
     }
-  });
-}
+  }
+    function stopRouteSimulation() {
+    if (simulationRef.current) {
+      clearInterval(simulationRef.current);
+      simulationRef.current = null;
+    }
+  }
 
-  async function nextStep() {
+  function stopLiveTracking() {
+    stopRouteSimulation();
+
+    if (watcherRef.current) {
+      watcherRef.current.remove();
+      watcherRef.current = null;
+    }
+
+    setIsTracking(false);
+  }
+
+  function calculateDisplayLocation(rawLocation, routeCoords) {
+    if (!routeCoords?.length) {
+      return { location: rawLocation, preview: false };
+    }
+
+    const routeStart = routeCoords[0];
+    const startIsDeviceGps = isCurrentLocationPlace(selectedStartPlace);
+
+    if (!rawLocation) {
+      return {
+        location: routeStart,
+        preview: !startIsDeviceGps,
+      };
+    }
+
+    const closest = getClosestPointOnRoute(rawLocation, routeCoords);
+    const distanceFromRouteStart = distanceMeters(rawLocation, routeStart);
+
+    /*
+      Important:
+      If the user selected Dubai Mall as start but their phone is somewhere else,
+      we do NOT pretend the phone is at Dubai Mall.
+      We open preview mode instead.
+    */
+    if (!startIsDeviceGps && distanceFromRouteStart > 250) {
+      return {
+        location: routeStart,
+        preview: true,
+      };
+    }
+
+    return {
+      location: closest && closest.distance <= 120 ? closest.point : rawLocation,
+      preview: false,
+    };
+  }
+
+  async function startLiveTracking() {
+    if (watcherRef.current) {
+      watcherRef.current.remove();
+      watcherRef.current = null;
+    }
+
+    const permission = await Location.requestForegroundPermissionsAsync();
+
+    if (permission.status !== "granted") {
+      throw new Error("Location permission is required for live GPS tracking.");
+    }
+
+    const current = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+
+    const rawCurrentLocation = {
+      latitude: current.coords.latitude,
+      longitude: current.coords.longitude,
+    };
+
+    const routeCoords = routeCoordsRef.current || [];
+    const display = calculateDisplayLocation(rawCurrentLocation, routeCoords);
+    const currentLocation = display.location;
+
+    const currentClosest = getClosestPointOnRoute(currentLocation, routeCoords);
+
+    const currentNextPoint =
+      routeCoords[
+        Math.min(
+          (currentClosest?.index || 0) + 1,
+          Math.max(routeCoords.length - 1, 0)
+        )
+      ];
+
+    const routeHeading = bearingBetween(currentLocation, currentNextPoint);
+
+    const gpsHeadingValue = Number.isFinite(current.coords.heading)
+      ? current.coords.heading
+      : null;
+
+    const speedMps = Number(current.coords.speed || 0);
+
+    const currentHeading =
+      speedMps > 2 && gpsHeadingValue !== null && !display.preview
+        ? gpsHeadingValue
+        : routeHeading;
+
+    setNavPreviewMode(display.preview);
+    setUserLocation(currentLocation);
+    setGpsHeading(currentHeading);
+    setCameraFollowing(true);
+    cameraFollowingRef.current = true;
+    updateProgressFromLocation(currentLocation);
+
+    mapRef.current?.animateCamera(
+      {
+        center: currentLocation,
+        zoom: 19,
+        pitch: 68,
+        heading: currentHeading,
+      },
+      { duration: 850 }
+    );
+
+    watcherRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 3000,
+        distanceInterval: 15,
+      },
+      (location) => {
+        const rawLocation = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
+
+        const latestRouteCoords = routeCoordsRef.current || [];
+        const nextDisplay = calculateDisplayLocation(rawLocation, latestRouteCoords);
+        const nextLocation = nextDisplay.location;
+
+        const closest = getClosestPointOnRoute(nextLocation, latestRouteCoords);
+
+        const nextPoint =
+          latestRouteCoords[
+            Math.min(
+              (closest?.index || 0) + 1,
+              Math.max(latestRouteCoords.length - 1, 0)
+            )
+          ];
+
+        const nextRouteHeading = bearingBetween(nextLocation, nextPoint);
+
+        const nextGpsHeading = Number.isFinite(location.coords.heading)
+          ? location.coords.heading
+          : null;
+
+        const nextSpeedMps = Number(location.coords.speed || 0);
+
+        const nextHeading =
+          nextSpeedMps > 2 && nextGpsHeading !== null && !nextDisplay.preview
+            ? nextGpsHeading
+            : nextRouteHeading;
+
+        setNavPreviewMode(nextDisplay.preview);
+        setUserLocation(nextLocation);
+        setGpsHeading(nextHeading);
+        updateProgressFromLocation(nextLocation);
+
+        if (cameraFollowingRef.current) {
+          mapRef.current?.animateCamera(
+            {
+              center: nextLocation,
+              zoom: 19,
+              pitch: 68,
+              heading: nextHeading,
+            },
+            { duration: 850 }
+          );
+        }
+      }
+    );
+
+    setIsTracking(true);
+  }
+
+  function startRouteSimulation() {
+    const coords = routeCoordsRef.current;
+    const steps = turnStepsRef.current;
+
+    if (!coords || coords.length < 2) {
+      setError("No route coordinates available for navigation simulation.");
+      return;
+    }
+
+    stopRouteSimulation();
+
+    let pointIndex = 0;
+    const stepSize = Math.max(1, Math.floor(coords.length / 140));
+
+    setCameraFollowing(true);
+    cameraFollowingRef.current = true;
+    setNavPreviewMode(false);
+    setUserLocation(coords[0]);
+    setGpsHeading(bearingBetween(coords[0], coords[1]));
+    updateProgressFromLocation(coords[0]);
+
+    mapRef.current?.animateCamera(
+      {
+        center: coords[0],
+        zoom: 19,
+        pitch: 68,
+        heading: bearingBetween(coords[0], coords[1]),
+      },
+      { duration: 700 }
+    );
+
+    simulationRef.current = setInterval(() => {
+      const previousPoint = coords[pointIndex];
+
+      pointIndex = Math.min(pointIndex + stepSize, coords.length - 1);
+
+      const currentPoint = coords[pointIndex];
+      const heading = bearingBetween(previousPoint, currentPoint);
+
+      setUserLocation(currentPoint);
+      setGpsHeading(heading);
+      updateProgressFromLocation(currentPoint);
+
+      if (cameraFollowingRef.current) {
+        mapRef.current?.animateCamera(
+          {
+            center: currentPoint,
+            zoom: 19,
+            pitch: 68,
+            heading,
+          },
+          { duration: 700 }
+        );
+      }
+
+      if (steps.length > 0) {
+        const progressRatio = pointIndex / Math.max(coords.length - 1, 1);
+
+        const nextStepIndex = Math.min(
+          Math.floor(progressRatio * steps.length),
+          steps.length - 1
+        );
+
+        setCurrentStepIndex(nextStepIndex);
+        currentStepIndexRef.current = nextStepIndex;
+      }
+
+      if (pointIndex >= coords.length - 1) {
+        stopRouteSimulation();
+
+        const finalIndex = Math.max(steps.length - 1, 0);
+
+        setCurrentStepIndex(finalIndex);
+        currentStepIndexRef.current = finalIndex;
+        setLiveRemainingDistanceKm(0);
+        setLiveRemainingEtaMin(0);
+      }
+    }, 900);
+
+    setIsTracking(true);
+  }
+
+  async function startTrip() {
     await runAction(async () => {
-      if (!sessionId) throw new Error("Start navigation first.");
+      if (!selectedRoute) {
+        throw new Error("Select a route before starting navigation.");
+      }
 
-      const nextIndex = Math.min(currentStepIndex + 1, Math.max(turnSteps.length - 1, 0));
+      const coords = routeCoordinates(selectedRoute);
+
+      if (coords.length < 2) {
+        throw new Error("Selected route has no road geometry.");
+      }
+
+      const routeStart = coords[0];
+      const routeHeading = bearingBetween(coords[0], coords[1]);
+
+      const body = {
+        trip_id: tripId,
+        selected_route_id: selectedRoute.route_id,
+        route_name: selectedRoute.route_name,
+        start_location: startLocation,
+        destination,
+        current_step_index: 0,
+        user_role: user?.role || "driver",
+      };
+
+      let data = null;
+
+      try {
+        data = await apiRequest("/api/trips/start", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+      } catch {
+        data = null;
+      }
+
+      const nextSession = String(
+        data?.session_id ||
+          data?.session?.session_id ||
+          data?.trip_session_id ||
+          `LOCAL-${Date.now()}`
+      );
+
+      setSessionId(nextSession);
+      sessionIdRef.current = nextSession;
+
+      setCurrentStepIndex(0);
+      currentStepIndexRef.current = 0;
+
+      setLiveRemainingDistanceKm(selectedRoute.distance_km || null);
+      setLiveRemainingEtaMin(selectedRoute.estimated_time_min || null);
+
+      setUserLocation(routeStart);
+      setGpsHeading(routeHeading);
+      setCameraFollowing(true);
+
+      setNavPreviewMode(!isCurrentLocationPlace(selectedStartPlace));
+      lastSpokenStepRef.current = -1;
+
+      /*
+        Important:
+        We switch to nav immediately.
+        Then we start GPS tracking after render, so the button never feels dead.
+      */
+      setScreen("nav");
+
+      setTimeout(() => {
+        mapRef.current?.animateCamera(
+          {
+            center: routeStart,
+            zoom: 19,
+            pitch: 68,
+            heading: routeHeading,
+          },
+          { duration: 700 }
+        );
+
+        if (USE_DEMO_NAVIGATION) {
+          startRouteSimulation();
+          return;
+        }
+
+        startLiveTracking().catch(() => {
+          setIsTracking(false);
+          setNavPreviewMode(true);
+          showToast(
+            "Navigation opened in preview. Use current GPS as start for real car movement."
+          );
+        });
+      }, 350);
+
+      if (!data) {
+        showToast("Trip started locally. Backend session endpoint did not respond.");
+      }
+    });
+  }
+    function requestEndTrip() {
+    Alert.alert(
+      hasArrived ? "Finish trip?" : "End trip early?",
+      hasArrived
+        ? "Mark this trip as completed?"
+        : "You have not arrived yet. End this trip as cancelled/interrupted?",
+      [
+        { text: "Continue", style: "cancel" },
+        {
+          text: hasArrived ? "Finish" : "End early",
+          style: hasArrived ? "default" : "destructive",
+          onPress: () => endTrip(hasArrived ? "completed" : "cancelled"),
+        },
+      ]
+    );
+  }
+
+  async function endTrip(finalStatus = "completed") {
+    await runAction(async () => {
+      if (!sessionId) {
+        throw new Error("No active trip session.");
+      }
+
+      stopLiveTracking();
+      Speech.stop();
 
       if (!sessionId.startsWith("LOCAL-")) {
         try {
-          await apiRequest("/api/trips/progress", {
+          await apiRequest("/api/trips/end", {
             method: "POST",
-            body: JSON.stringify({ session_id: sessionId, current_step_index: nextIndex }),
+            body: JSON.stringify({
+              session_id: sessionId,
+              status: finalStatus,
+            }),
           });
         } catch {
-          setError("Backend progress update failed. Continuing locally.");
+          showToast("Backend end trip failed. Showing local summary.");
         }
       }
 
-      setCurrentStepIndex(nextIndex);
+      setTripSummary({
+        status: finalStatus,
+        route_id: selectedRoute?.route_id,
+        route_name: selectedRoute?.route_name,
+        start_location: startLocation,
+        destination,
+        eta_text: selectedRoute?.eta_text,
+        distance_text: selectedRoute?.distance_text,
+        congestion_score: selectedRoute?.congestion_score,
+        flowsync_score: selectedRoute?.flowsync_score || selectedRoute?.route_score,
+        live_traffic: selectedRoute?.live_traffic,
+        traffic_display: selectedRoute?.traffic_display,
+        progress: progressPercent,
+      });
+
+      setSessionId("");
+      sessionIdRef.current = "";
+      setLiveRemainingDistanceKm(null);
+      setLiveRemainingEtaMin(null);
+      setScreen("summary");
     });
   }
 
-  async function endTrip() {
-  await runAction(async () => {
-    if (!sessionId) {
-      throw new Error("No active session.");
+  async function submitReport(reportType) {
+    const reportLocation = userLocation || selectedRouteCoordinates[0] || null;
+
+    const nextReport = {
+      id: `local-report-${Date.now()}`,
+      type: reportType.id,
+      title: reportType.label,
+      description: `Driver reported ${reportType.label}`,
+      latitude: reportLocation?.latitude,
+      longitude: reportLocation?.longitude,
+      created_at: new Date().toISOString(),
+    };
+
+    if (reportLocation) {
+      setLocalReports((items) => [nextReport, ...items].slice(0, 8));
     }
 
-    stopLiveTracking();
+    setReportModalVisible(false);
+    showToast(`${reportType.label} report submitted`);
 
-    if (!sessionId.startsWith("LOCAL-")) {
-      try {
-        await apiRequest("/api/trips/end", {
-          method: "POST",
-          body: JSON.stringify({
-            session_id: sessionId,
-            status: "completed",
-          }),
-        });
-      } catch {
-        setError("Backend end trip failed. Showing local summary.");
-      }
-    }
+    const payload = {
+      type: reportType.id,
+      title: reportType.label,
+      latitude: reportLocation?.latitude,
+      longitude: reportLocation?.longitude,
+      route_id: selectedRoute?.route_id,
+      session_id: sessionId || null,
+      user_role: user?.role || "driver",
+    };
 
-    setTripSummary({
-      status: "completed",
-      route_id: selectedRoute.route_id,
-      route_name: selectedRoute.route_name,
-      start_location: startLocation,
-      destination,
-      eta_text: selectedRoute.eta_text,
-      distance_text: selectedRoute.distance_text,
-      congestion_score: selectedRoute.congestion_score,
-      flowsync_score: selectedRoute.flowsync_score || selectedRoute.route_score,
-      progress: progressPercent,
+    await optionalApiRequest("/api/reports", {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
 
-    setSessionId("");
-    sessionIdRef.current = "";
-    setLiveRemainingDistanceKm(null);
-    setLiveRemainingEtaMin(null);
-    setScreen("summary");
-  });
-}
+    await optionalApiRequest("/api/alerts/report", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
 
-  function swapLocations() {
-    setStartLocation(destination);
-    setDestination(startLocation);
+    await optionalApiRequest("/api/user_reports", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   }
-
-  function renderHeader() {
-  return null;
-}
-
-  function renderTabs() {
-  if (!token || screen === "nav") return null;
-
-  const tabs = [
-    ["Explore", "home"],
-    ["Routes", "routes"],
-    ["Ops", "operations"],
-    ["Me", "account"],
-  ];
-
-  return (
-    <View style={styles.gmBottomTabs}>
-      {tabs.map(([label, value]) => (
-        <TouchableOpacity
-          key={value}
-          style={[
-            styles.gmBottomTab,
-            screen === value ? styles.gmBottomTabActive : null,
-          ]}
-          onPress={() => setScreen(value)}
-        >
-          <Text
-            style={[
-              styles.gmBottomTabText,
-              screen === value ? styles.gmBottomTabTextActive : null,
-            ]}
-          >
-            {label}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
 
   function renderLogin() {
-  return (
-    <ScrollView contentContainerStyle={styles.loginShell}>
-      <View style={styles.loginBrandBlock}>
-        <View style={styles.loginLogoRow}>
+    return (
+      <ScrollView
+        contentContainerStyle={styles.loginShell}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.loginBrandRow}>
           <View style={styles.logoBubble}>
             <Text style={styles.logoBubbleText}>FS</Text>
           </View>
 
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.loginLogoText}>FlowSync</Text>
-            <Text style={styles.loginSubline}>Smart City Mobility</Text>
+            <Text style={styles.loginSubline}>Dubai Smart Mobility OS</Text>
           </View>
         </View>
 
-        <Text style={styles.loginHeroTitle}>Navigate Dubai smarter.</Text>
-        <Text style={styles.loginHeroText}>
-          Real-time route planning, congestion-aware choices, and in-app navigation.
-        </Text>
-      </View>
+        <View style={styles.loginHeroCard}>
+          <View style={styles.heroPillRow}>
+            <Pill label="Live routes" tone="cyan" />
+            <Pill label="Traffic AI" tone="green" />
+          </View>
 
-      <View style={styles.loginHeroCard}>
-        <Text style={styles.loginFieldLabel}>Email</Text>
-        <TextInput
-          style={styles.loginField}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="Enter your email"
-          placeholderTextColor="#64748b"
-        />
+          <Text style={styles.loginHeroTitle}>
+            Move through Dubai with city-level intelligence.
+          </Text>
 
-        <Text style={styles.loginFieldLabel}>Password</Text>
-        <TextInput
-          style={styles.loginField}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="Enter your password"
-          placeholderTextColor="#64748b"
-        />
+          <Text style={styles.loginHeroText}>
+            Real road routing, traffic readiness, GPS navigation, audio turn cues,
+            reports, analytics, and parking intelligence.
+          </Text>
 
-        <TouchableOpacity style={styles.loginButton} onPress={login}>
-          <Text style={styles.loginButtonText}>Continue</Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={styles.loginLabel}>Email</Text>
 
-      <View style={styles.quickAccessCard}>
-        <Text style={styles.quickAccessTitle}>Quick access</Text>
+          <TextInput
+            style={styles.loginInput}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            placeholder="driver@flowsync.local"
+            placeholderTextColor={COLORS.faint}
+          />
 
-        <View style={styles.quickAccountGrid}>
-          {DEMO_ACCOUNTS.map((account) => (
+          <Text style={styles.loginLabel}>Password</Text>
+
+          <TextInput
+            style={styles.loginInput}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder="Password"
+            placeholderTextColor={COLORS.faint}
+          />
+
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={login}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.loginButtonText}>Enter FlowSync</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.quickCard}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.quickTitle}>Quick access</Text>
+            <Text style={styles.quickHint}>Demo roles</Text>
+          </View>
+
+          {QUICK_ACCOUNTS.map((account) => (
             <TouchableOpacity
               key={account.email}
               style={[
-                styles.quickAccountButton,
-                email === account.email ? styles.quickAccountButtonActive : null,
+                styles.quickAccount,
+                email === account.email ? styles.quickAccountActive : null,
               ]}
-              onPress={() => setEmail(account.email)}
+              onPress={() => chooseQuickAccount(account)}
+              activeOpacity={0.86}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.quickRole,
+                    email === account.email ? styles.quickRoleActive : null,
+                  ]}
+                >
+                  {account.role}
+                </Text>
+
+                <Text style={styles.quickDescription}>{account.description}</Text>
+                <Text style={styles.quickEmail}>{account.email}</Text>
+              </View>
+
+              <Text style={styles.quickChevron}>›</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  function renderTrafficSegments(navigation = false) {
+    if (!selectedRoute || selectedRouteCoordinates.length < 2) return null;
+
+    return routeTrafficSegments.map((segment, index) => {
+      const coordinates = segment.coordinates?.length > 1 ? segment.coordinates : [];
+
+      if (coordinates.length < 2) return null;
+
+      return (
+        <Polyline
+          key={`${segment.id}-${index}`}
+          coordinates={coordinates}
+          strokeWidth={navigation ? 11 : 8}
+          strokeColor={trafficColor(segment.severity)}
+          zIndex={navigation ? 42 : 28}
+          lineCap="round"
+          lineJoin="round"
+        />
+      );
+    });
+  }
+
+  function renderMap({
+    navigation = false,
+    routeCompare = false,
+    showControls = true,
+  } = {}) {
+    const coords = selectedRouteCoordinates;
+    const start = coords[0];
+    const end = coords[coords.length - 1];
+
+    const navClosestIndex =
+      navigation && userLocation && coords.length > 1
+        ? closestRoutePointIndex(userLocation, coords)
+        : 0;
+
+    const navRemainingStartIndex = Math.min(
+      navClosestIndex,
+      Math.max(coords.length - 2, 0)
+    );
+
+    const remainingNavCoords = navigation ? coords.slice(navRemainingStartIndex) : coords;
+
+    return (
+      <View style={styles.mapShell}>
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+          customMapStyle={navigation ? MAP_STYLE_NAV : MAP_STYLE_LIGHT}
+          initialRegion={mapRegion || DEFAULT_REGION}
+          onPanDrag={() => {
+            if (screen === "nav") {
+              setCameraFollowing(false);
+              cameraFollowingRef.current = false;
+            }
+          }}
+          onRegionChangeComplete={(region) => {
+            if (screen !== "nav") setMapRegion(region);
+          }}
+          showsUserLocation={!navigation}
+          showsMyLocationButton={false}
+          showsCompass={false}
+          toolbarEnabled={false}
+          loadingEnabled
+        >
+          {routeCompare
+            ? routes.map((route) => {
+                const currentCoords = routeCoordinates(route);
+                const isSelected = route.route_id === selectedRouteId;
+
+                if (currentCoords.length < 2) return null;
+
+                return (
+                  <Polyline
+                    key={route.route_id}
+                    coordinates={currentCoords}
+                    strokeWidth={isSelected ? 9 : 5}
+                    strokeColor={
+                      isSelected ? COLORS.cyan : "rgba(100,116,139,0.68)"
+                    }
+                    zIndex={isSelected ? 35 : 5}
+                    tappable
+                    onPress={() => {
+                      selectRoute(route);
+                      setRouteSheetMode("collapsed");
+                    }}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                );
+              })
+            : null}
+
+          {!routeCompare && coords.length > 1 ? (
+            <>
+              <Polyline
+                coordinates={coords}
+                strokeWidth={navigation ? 16 : 12}
+                strokeColor={
+                  navigation ? "rgba(15,23,42,0.88)" : "rgba(15,23,42,0.24)"
+                }
+                zIndex={8}
+                lineCap="round"
+                lineJoin="round"
+              />
+
+              <Polyline
+                coordinates={coords}
+                strokeWidth={navigation ? 10 : 7}
+                strokeColor={navigation ? COLORS.cyan : COLORS.green}
+                zIndex={24}
+                lineCap="round"
+                lineJoin="round"
+              />
+
+              {renderTrafficSegments(navigation)}
+
+              {navigation && remainingNavCoords.length > 1 ? (
+                <Polyline
+                  coordinates={remainingNavCoords}
+                  strokeWidth={12}
+                  strokeColor="#67e8f9"
+                  zIndex={55}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              ) : null}
+            </>
+          ) : null}
+
+          {navigation && userLocation ? (
+            <Marker
+              coordinate={userLocation}
+              anchor={{ x: 0.5, y: 0.5 }}
+              rotation={gpsHeading || 0}
+              flat
+            >
+              <View style={styles.vehicleMarker}>
+                <Text style={styles.vehicleMarkerText}>➤</Text>
+              </View>
+            </Marker>
+          ) : null}
+
+          {!navigation && start ? (
+            <Marker coordinate={start} title="Start" description={startLocation} />
+          ) : null}
+
+          {end ? (
+            <Marker coordinate={end} title="Destination" description={destination} />
+          ) : null}
+
+          {routeIncidents.map((incident) => (
+            <Marker
+              key={incident.id}
+              coordinate={{
+                latitude: incident.latitude,
+                longitude: incident.longitude,
+              }}
+              title={incident.title}
+              description={incident.description}
+            >
+              <View style={styles.incidentMarker}>
+                <Text style={styles.incidentMarkerText}>!</Text>
+              </View>
+            </Marker>
+          ))}
+        </MapView>
+
+        {showControls && !navigation ? (
+          <View style={styles.mapButtons}>
+            <TouchableOpacity
+              style={styles.circleButton}
+              onPress={recenterOnUser}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.circleButtonText}>⌖</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.circleButton}
+              onPress={refreshOperationsData}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.circleButtonText}>↻</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.circleButtonDanger}
+              onPress={() => setReportModalVisible(true)}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.circleButtonText}>⚠</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+    function renderSuggestionList(type) {
+    const suggestions = type === "start" ? startSuggestions : destinationSuggestions;
+    const searching = type === "start" ? searchingStart : searchingDestination;
+
+    if (searching) {
+      return (
+        <View style={styles.suggestionBox}>
+          <Text style={styles.suggestionStatus}>Searching Dubai...</Text>
+        </View>
+      );
+    }
+
+    if (!suggestions.length) return null;
+
+    return (
+      <View style={styles.suggestionBox}>
+        <ScrollView
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          style={styles.suggestionScroll}
+        >
+          {suggestions.map((place, index) => (
+            <TouchableOpacity
+              key={`${type}-${place.place_id || index}`}
+              style={styles.suggestionItem}
+              onPress={() => selectSuggestion(place, type)}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.suggestionTitle}>{placeTitle(place)}</Text>
+              <Text style={styles.suggestionSub}>{placeSubtitle(place)}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  function renderSearchCard() {
+    return (
+      <View style={styles.searchCard}>
+        <View style={styles.searchHeaderRow}>
+          <View>
+            <Text style={styles.searchHeaderTitle}>Plan smart route</Text>
+            <Text style={styles.searchHeaderSub}>ORS routing • TomTom-ready traffic • FlowSync AI</Text>
+          </View>
+
+          <Pill
+            label={user?.role || "driver"}
+            tone={user?.role === "emergency" ? "red" : "cyan"}
+          />
+        </View>
+
+        <View style={styles.searchTop}>
+          <View style={styles.routeDots}>
+            <View style={styles.dotStart} />
+            <View style={styles.dotLine} />
+            <View style={styles.dotEnd} />
+          </View>
+
+          <View style={styles.searchInputs}>
+            <TextInput
+              style={styles.searchInput}
+              value={startLocation}
+              onChangeText={(text) => {
+                setStartLocation(text);
+                setSelectedStartPlace(null);
+                clearRouteResult();
+                searchPlaces(text, "start");
+              }}
+              placeholder="Start location"
+              placeholderTextColor={COLORS.faint}
+            />
+
+            {renderSuggestionList("start")}
+
+            <TouchableOpacity
+              style={styles.useLocationButton}
+              onPress={useCurrentLocationAsStart}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.useLocationText}>Use live GPS as start</Text>
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TextInput
+              style={styles.searchInput}
+              value={destination}
+              onChangeText={(text) => {
+                setDestination(text);
+                setSelectedDestinationPlace(null);
+                clearRouteResult();
+                searchPlaces(text, "destination");
+              }}
+              placeholder="Where to?"
+              placeholderTextColor={COLORS.faint}
+            />
+
+            {renderSuggestionList("destination")}
+          </View>
+
+          <TouchableOpacity
+            style={styles.swapButton}
+            onPress={swapLocations}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.swapText}>⇅</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.preferenceRow}>
+          {[
+            ["balanced", "Balanced"],
+            ["fastest", "Fastest"],
+            ["low_traffic", "Low traffic"],
+          ].map(([value, label]) => (
+            <TouchableOpacity
+              key={value}
+              style={[
+                styles.preferenceChip,
+                routePreference === value ? styles.preferenceChipActive : null,
+              ]}
+              onPress={() => setRoutePreference(value)}
+              activeOpacity={0.86}
             >
               <Text
                 style={[
-                  styles.quickAccountRole,
-                  email === account.email ? styles.quickAccountRoleActive : null,
+                  styles.preferenceText,
+                  routePreference === value ? styles.preferenceTextActive : null,
                 ]}
               >
-                {account.role}
+                {label}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
-      </View>
-    </ScrollView>
-  );
-}
-
-  function renderMap({ navigation = false } = {}) {
-  const start = routeCoordinates[0];
-  const end = routeCoordinates[routeCoordinates.length - 1];
-
-  return (
-    <View style={styles.gmMapShell}>
-      <MapView
-        ref={mapRef}
-        style={styles.gmMap}
-        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
-        region={mapRegion}
-        onRegionChangeComplete={setMapRegion}
-        showsUserLocation
-        showsMyLocationButton={false}
-      >
-        {start && (
-          <Marker coordinate={start} title="Start" description={startLocation} />
-        )}
-
-        {end && (
-          <Marker coordinate={end} title="Destination" description={destination} />
-        )}
-
-        {!navigation && userLocation && (
-          <Marker coordinate={userLocation} title="You" pinColor="blue" />
-        )}
-
-        {navigation && userLocation && (
-          <Marker
-            coordinate={userLocation}
-            title="FlowSync vehicle"
-            description="Current location"
-            pinColor="green"
-          />
-        )}
-
-        {routeCoordinates.length > 1 && (
-          <Polyline
-            coordinates={routeCoordinates}
-            strokeWidth={navigation ? 9 : 7}
-            strokeColor={navigation ? "#00d9ff" : "#22c55e"}
-          />
-        )}
-      </MapView>
-
-      <View style={styles.gmMapButtons}>
-        <TouchableOpacity style={styles.gmCircleButton} onPress={getMyLocation}>
-          <Text style={styles.gmCircleButtonText}>⌖</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.gmCircleButton}>
-          <Text style={styles.gmCircleButtonText}>▣</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.gmCircleButton}>
-          <Text style={styles.gmCircleButtonText}>⚠</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-  function renderHome() {
-  const isCollapsed = !homeSheetExpanded;
-
-  return (
-    <View style={styles.gmScreen}>
-      {renderMap()}
-
-      <View style={styles.gmSearchCard}>
-        <View style={styles.gmSearchTop}>
-          <Text style={styles.gmSearchIcon}>⌕</Text>
-
-          <View style={styles.gmSearchInputs}>
-            <TextInput
-  style={styles.gmSearchInput}
-  value={startLocation}
-  onChangeText={(text) => {
-    setStartLocation(text);
-    setSelectedStartPlace(null);
-    searchLocations(text, "start");
-  }}
-  placeholder="Start location"
-  placeholderTextColor="#9ca3af"
-/>
-
-{searchingStart ? (
-  <Text style={styles.gmSuggestionStatus}>Searching start...</Text>
-) : null}
-
-{startSuggestions.length > 0 ? (
-  <View style={styles.gmSuggestionsBox}>
-    {startSuggestions.slice(0, 4).map((place, index) => (
-      <TouchableOpacity
-        key={`start-${index}`}
-        style={styles.gmSuggestionItem}
-        onPress={() => selectLocationSuggestion(place, "start")}
-      >
-        <Text style={styles.gmSuggestionTitle}>
-          {place.name || place.place_name || place.display_name || place.label}
-        </Text>
-        <Text style={styles.gmSuggestionSub}>
-          {place.area || place.city || place.category || "Location"}
-        </Text>
-      </TouchableOpacity>
-    ))}
-  </View>
-) : null}
-
-{searchingStart ? (
-  <Text style={styles.gmSuggestionStatus}>Searching start location...</Text>
-) : null}
-
-{startSuggestions.length > 0 ? (
-  <View style={styles.gmSuggestionsBox}>
-    {startSuggestions.slice(0, 4).map((place, index) => (
-      <TouchableOpacity
-        key={`start-${index}`}
-        style={styles.gmSuggestionItem}
-        onPress={() => selectLocationSuggestion(place, "start")}
-      >
-        <Text style={styles.gmSuggestionTitle}>
-          {place.name || place.place_name || place.display_name || place.label}
-        </Text>
-        <Text style={styles.gmSuggestionSub}>
-          {place.category || place.area || place.city || "UAE location"}
-        </Text>
-      </TouchableOpacity>
-    ))}
-  </View>
-) : null}
-<TouchableOpacity
-  style={styles.gmUseLocationButton}
-  onPress={useCurrentLocationAsStart}
->
-  <Text style={styles.gmUseLocationText}>Use my current location as start</Text>
-</TouchableOpacity>
-
-<View style={styles.gmDivider} />
-
-<TextInput
-  style={styles.gmSearchInput}
-  value={destination}
-  onChangeText={(text) => {
-    setDestination(text);
-    setSelectedDestinationPlace(null);
-    searchLocations(text, "destination");
-  }}
-  placeholder="Where to?"
-  placeholderTextColor="#9ca3af"
-/>
-
-{searchingDestination ? (
-  <Text style={styles.gmSuggestionStatus}>Searching destination...</Text>
-) : null}
-
-{destinationSuggestions.length > 0 ? (
-  <View style={styles.gmSuggestionsBox}>
-    {destinationSuggestions.slice(0, 4).map((place, index) => (
-      <TouchableOpacity
-        key={`destination-${index}`}
-        style={styles.gmSuggestionItem}
-        onPress={() => selectLocationSuggestion(place, "destination")}
-      >
-        <Text style={styles.gmSuggestionTitle}>
-          {place.name || place.place_name || place.display_name || place.label}
-        </Text>
-        <Text style={styles.gmSuggestionSub}>
-          {place.area || place.city || place.category || "Location"}
-        </Text>
-      </TouchableOpacity>
-    ))}
-  </View>
-) : null}
-
-{searchingDestination ? (
-  <Text style={styles.gmSuggestionStatus}>Searching destination...</Text>
-) : null}
-
-{destinationSuggestions.length > 0 ? (
-  <View style={styles.gmSuggestionsBox}>
-    {destinationSuggestions.slice(0, 4).map((place, index) => (
-      <TouchableOpacity
-        key={`destination-${index}`}
-        style={styles.gmSuggestionItem}
-        onPress={() => selectLocationSuggestion(place, "destination")}
-      >
-        <Text style={styles.gmSuggestionTitle}>
-          {place.name || place.place_name || place.display_name || place.label}
-        </Text>
-        <Text style={styles.gmSuggestionSub}>
-          {place.category || place.area || place.city || "UAE location"}
-        </Text>
-      </TouchableOpacity>
-    ))}
-  </View>
-) : null}
-          </View>
-
-          <TouchableOpacity style={styles.gmSwapButton} onPress={swapLocations}>
-            <Text style={styles.gmSwapText}>⇅</Text>
-          </TouchableOpacity>
-        </View>
 
         <TouchableOpacity
-          style={styles.gmFindButton}
+          style={styles.findButton}
           onPress={() => {
+            Keyboard.dismiss();
             setHomeSheetHidden(false);
             setHomeSheetExpanded(false);
             recommendRoute();
           }}
+          activeOpacity={0.86}
         >
-          <Text style={styles.gmFindButtonText}>Find FlowSync Route</Text>
+          <Text style={styles.findButtonText}>Generate FlowSync route</Text>
         </TouchableOpacity>
+
+        <View style={styles.savedStrip}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {savedPlaces.slice(0, 6).map((place, index) => (
+              <TouchableOpacity
+                key={`${place.place_id || place.name}-${index}`}
+                style={styles.savedChip}
+                onPress={() => selectSuggestion(place, "destination")}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.savedChipText}>{place.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
+    );
+  }
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.gmChipRow}
+  function renderCompactSearchBar() {
+    return (
+      <TouchableOpacity
+        style={styles.compactSearchBar}
+        onPress={() => {
+          clearRouteResult();
+          setHomeSheetHidden(false);
+          setHomeSheetExpanded(false);
+        }}
+        activeOpacity={0.86}
       >
-        {["Restaurants", "Parking", "Traffic", "Alerts", "Low congestion"].map(
-          (item) => (
-            <TouchableOpacity key={item} style={styles.gmChip}>
-              <Text style={styles.gmChipText}>{item}</Text>
-            </TouchableOpacity>
-          )
-        )}
-      </ScrollView>
+        <Text style={styles.compactSearchMain} numberOfLines={1}>
+          {startLocation} → {destination}
+        </Text>
 
-      {homeSheetHidden ? (
+        <Text style={styles.compactSearchHint}>
+          Tap to edit route • {trafficStatus}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
+  function renderRoutePanel() {
+    if (!hasRouteResult || !selectedRoute) return null;
+
+    if (homeSheetHidden) {
+      return (
         <TouchableOpacity
-          style={styles.gmHiddenRoutePill}
+          style={styles.hiddenRoutePill}
           onPress={() => {
             setHomeSheetHidden(false);
             setHomeSheetExpanded(false);
           }}
+          activeOpacity={0.9}
         >
           <View>
-            <Text style={styles.gmHiddenRouteTitle}>
-              {selectedRoute?.eta_text || "--"} • {selectedRoute?.route_id}
+            <Text style={styles.hiddenRouteTitle}>
+              {selectedRoute.eta_text} • {selectedRoute.route_id}
             </Text>
-            <Text style={styles.gmHiddenRouteSub}>Show route details</Text>
+
+            <Text style={styles.hiddenRouteSub}>
+              {selectedRoute.live_traffic
+                ? selectedRoute.traffic_display
+                : "Show FlowSync intelligence"}
+            </Text>
           </View>
 
-          <Text style={styles.gmHiddenRouteArrow}>⌃</Text>
+          <Text style={styles.hiddenRouteArrow}>⌃</Text>
         </TouchableOpacity>
-      ) : (
-        <View
-          style={[
-            styles.gmRouteSheet,
-            isCollapsed
-              ? styles.gmRouteSheetCollapsed
-              : styles.gmRouteSheetExpanded,
-          ]}
-        >
-          <View
-            style={styles.gmSheetHandleButton}
-            {...sheetPanResponder.panHandlers}
-          >
-            <View style={styles.gmHandle} />
-            <Text style={styles.gmSwipeHint}>
-              {isCollapsed
-                ? "Swipe up for details • swipe down to hide"
-                : "Swipe down to collapse or hide"}
-            </Text>
-          </View>
+      );
+    }
 
-          <View style={styles.gmSheetHeader}>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={styles.gmRouteTitle}
-                numberOfLines={isCollapsed ? 1 : 3}
-              >
-                {selectedRoute?.route_name || "FlowSync Route"}
-              </Text>
+    const collapsed = !homeSheetExpanded;
+    const score = selectedRoute.flowsync_score || selectedRoute.route_score || "--";
 
-              <Text style={styles.gmRouteSub}>
-                {startLocation} → {destination}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.gmSheetToggleButton}
-              onPress={() => {
-                if (homeSheetExpanded) {
-                  setHomeSheetExpanded(false);
-                } else {
-                  setHomeSheetHidden(false);
-                  setHomeSheetExpanded(true);
-                }
-              }}
-            >
-              <Text style={styles.gmSheetToggleText}>
-                {isCollapsed ? "⌃" : "⌄"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.gmMiniMetrics}>
-            <View style={styles.gmMiniMetric}>
-              <Text style={styles.gmMiniMetricValue}>
-                {selectedRoute?.eta_text || "--"}
-              </Text>
-              <Text style={styles.gmMiniMetricLabel}>ETA</Text>
-            </View>
-
-            <View style={styles.gmMiniMetric}>
-              <Text style={styles.gmMiniMetricValue}>
-                {selectedRoute?.distance_text || "--"}
-              </Text>
-              <Text style={styles.gmMiniMetricLabel}>Distance</Text>
-            </View>
-
-            <View style={styles.gmMiniMetric}>
-              <Text style={styles.gmMiniMetricValue}>
-                {selectedRoute?.congestion_score ?? "--"}
-              </Text>
-              <Text style={styles.gmMiniMetricLabel}>Traffic</Text>
-            </View>
-          </View>
-
-          {homeSheetExpanded && (
-            <View style={styles.gmFlowBox}>
-              <Text style={styles.gmFlowTitle}>Why FlowSync chose this</Text>
-              <Text style={styles.gmFlowText}>
-                {selectedRoute?.recommendation_reason || recommendationReason}
-              </Text>
-              <Text style={styles.gmFlowSmall}>
-                Selected Route: {selectedRoute?.route_id} • Score:{" "}
-                {selectedRoute?.flowsync_score || selectedRoute?.route_score}
-              </Text>
-              <Text style={styles.gmFlowSmall}>
-                Load: {selectedRoute?.assigned_users || 0}/
-                {selectedRoute?.road_capacity || "--"} •{" "}
-                {selectedRoute?.load_status || "balanced"}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.gmActionRow}>
-            <TouchableOpacity
-              style={styles.gmSecondaryButton}
-              onPress={() => setScreen("routes")}
-            >
-              <Text style={styles.gmSecondaryButtonText}>Routes</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.gmPrimaryButton} onPress={startTrip}>
-              <Text style={styles.gmPrimaryButtonText}>Start</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={styles.gmHideSheetButton}
-            onPress={() => {
-              setHomeSheetHidden(true);
-              setHomeSheetExpanded(false);
-            }}
-          >
-            <Text style={styles.gmHideSheetText}>Hide route panel</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
-}
-function renderRouteCompareMap() {
-  const selectedCoords = getRouteCoordinates(selectedRoute);
-  const start = selectedCoords[0];
-  const end = selectedCoords[selectedCoords.length - 1];
-
-  const sortedRoutes = [
-    ...routes.filter((route) => route.route_id !== selectedRouteId),
-    ...routes.filter((route) => route.route_id === selectedRouteId),
-  ];
-
-  return (
-    <View style={styles.gmMapShell}>
-      <MapView
-        key={`route-map-${selectedRouteId}`}
-        ref={mapRef}
-        style={styles.gmMap}
-        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
-        region={mapRegion}
-        onRegionChangeComplete={setMapRegion}
-        showsUserLocation
-        showsMyLocationButton={false}
+    return (
+      <View
+        style={[
+          styles.routeSheet,
+          collapsed ? styles.routeSheetCollapsed : styles.routeSheetExpanded,
+        ]}
       >
-        {sortedRoutes.slice(0, 4).map((route) => {
-          const coords = getRouteCoordinates(route);
-          const isSelected = route.route_id === selectedRouteId;
-
-          return coords.length > 1 ? (
-            <Polyline
-              key={route.route_id}
-              coordinates={coords}
-              strokeWidth={isSelected ? 8 : 5}
-              strokeColor={isSelected ? "#2563eb" : "rgba(75,85,99,0.65)"}
-              zIndex={isSelected ? 10 : 1}
-              tappable
-              onPress={() => {
-                selectRoute(route);
-                setRouteSheetMode("collapsed");
-              }}
-            />
-          ) : null;
-        })}
-
-        {start && (
-          <Marker coordinate={start} title="Start" description={startLocation} />
-        )}
-
-        {end && (
-          <Marker coordinate={end} title="Destination" description={destination} />
-        )}
-
-        {userLocation && (
-          <Marker coordinate={userLocation} title="You" pinColor="blue" />
-        )}
-      </MapView>
-
-      <View style={styles.routeCompareLegend}>
-        <View style={styles.routeLegendItem}>
-          <View style={styles.routeLegendSelected} />
-          <Text style={styles.routeLegendText}>Selected route</Text>
+        <View style={styles.sheetHandleArea} {...homePanResponder.panHandlers}>
+          <View style={styles.handle} />
+          <Text style={styles.swipeHint}>
+            {collapsed
+              ? "Swipe up for intelligence • swipe down to hide"
+              : "Swipe down to collapse or hide"}
+          </Text>
         </View>
 
-        <View style={styles.routeLegendItem}>
-          <View style={styles.routeLegendAlt} />
-          <Text style={styles.routeLegendText}>Alternatives</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function renderRoutes() {
-  const isCollapsed = routeSheetMode === "collapsed";
-  const isHidden = routeSheetMode === "hidden";
-  const visibleRoutes = isCollapsed
-    ? [selectedRoute].filter(Boolean)
-    : routes.slice(0, 4);
-
-  return (
-    <View style={styles.gmScreen}>
-      {renderRouteCompareMap()}
-
-      <View style={styles.routeCompareTopCard}>
-        <Text style={styles.routeCompareTitle}>Choose your route</Text>
-        <Text style={styles.routeCompareSub}>
-          {startLocation} → {destination}
-        </Text>
-      </View>
-
-      {isHidden ? (
-        <TouchableOpacity
-          style={styles.routeHiddenPill}
-          onPress={() => setRouteSheetMode("collapsed")}
-        >
-          <View>
-            <Text style={styles.routeHiddenTitle}>
-              {selectedRoute?.eta_text || "--"} • {selectedRoute?.route_id}
-            </Text>
-            <Text style={styles.routeHiddenSub}>
-              Tap to show route options
-            </Text>
-          </View>
-
-          <Text style={styles.routeHiddenArrow}>⌃</Text>
-        </TouchableOpacity>
-      ) : (
-        <View
-          style={[
-            styles.routeCompareSheet,
-            isCollapsed
-              ? styles.routeCompareSheetCollapsed
-              : styles.routeCompareSheetExpanded,
-          ]}
-        >
-          <View
-            style={styles.routeSheetHandleArea}
-            {...routeSheetPanResponder.panHandlers}
-          >
-            <View style={styles.gmHandle} />
-            <Text style={styles.routeSheetHint}>
-              {isCollapsed
-                ? "Swipe up for all routes • swipe down to hide"
-                : "Tap route line on map or swipe down to collapse"}
-            </Text>
-          </View>
-
-          <View style={styles.routeCompareHeader}>
-            <View>
-              <Text style={styles.routeCompareSheetTitle}>Route options</Text>
-              <Text style={styles.routeCompareSheetSub}>
-                Tap a route card or route line
-              </Text>
+        <View style={styles.sheetHeader}>
+          <View style={{ flex: 1 }}>
+            <View style={styles.routeLabelRow}>
+              <Pill label={selectedRoute.route_id} tone="cyan" />
+              {selectedRoute.route_id === recommendedRouteId ? (
+                <Pill label="Recommended" tone="green" />
+              ) : null}
             </View>
 
-            <TouchableOpacity
-              style={styles.routeCountPillButton}
-              onPress={() =>
-                setRouteSheetMode(isCollapsed ? "expanded" : "collapsed")
-              }
-            >
-              <Text style={styles.routeCountPillText}>
-                {isCollapsed ? "Show all" : `${routes.length} routes`}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.routeTitle} numberOfLines={collapsed ? 1 : 2}>
+              {selectedRoute.route_name}
+            </Text>
 
-          <View style={styles.compactRouteList}>
-            {visibleRoutes.map((route) => {
-              const isSelected = route.route_id === selectedRouteId;
-              const isRecommended = route.route_id === recommendedRouteId;
-
-              return (
-                <TouchableOpacity
-                  key={route.route_id}
-                  style={[
-                    styles.compactRouteCard,
-                    isSelected ? styles.compactRouteCardActive : null,
-                  ]}
-                  onPress={() => selectRoute(route)}
-                >
-                  <View style={styles.compactRouteLeft}>
-                    <View
-                      style={[
-                        styles.compactRouteDot,
-                        isSelected ? styles.compactRouteDotActive : null,
-                      ]}
-                    />
-
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.compactRouteTitleRow}>
-                        <Text
-                          style={[
-                            styles.compactRouteName,
-                            isSelected ? styles.compactRouteNameActive : null,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {route.route_name}
-                        </Text>
-
-                        {isRecommended ? (
-                          <Text style={styles.compactBestPill}>Best</Text>
-                        ) : null}
-
-                        {isSelected ? (
-                          <Text style={styles.compactSelectedPill}>Selected</Text>
-                        ) : null}
-                      </View>
-
-                      <Text style={styles.compactRouteReason} numberOfLines={1}>
-                        {route.traffic_display ||
-                          `Traffic ${route.congestion_score}/10`}{" "}
-                        • Load {route.assigned_users || 0}/
-                        {route.road_capacity || "--"}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.compactRouteStats}>
-                    <Text style={styles.compactEta}>
-                      {route.eta_text || `${route.estimated_time_min} min`}
-                    </Text>
-                    <Text style={styles.compactDistance}>
-                      {route.distance_text || `${route.distance_km} km`}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={styles.routeCompareActionRow}>
-            <TouchableOpacity
-              style={styles.routeBackButton}
-              onPress={() => setScreen("home")}
-            >
-              <Text style={styles.routeBackText}>Back</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.routeUseButton}
-              onPress={() => setScreen("home")}
-            >
-              <Text style={styles.routeUseText}>Use Selected Route</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={styles.routeHideSheetButton}
-            onPress={() => setRouteSheetMode("hidden")}
-          >
-            <Text style={styles.routeHideSheetText}>Hide route options</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
-}
-
-function renderNavigation() {
-  return (
-    <View style={styles.gmScreen}>
-      {renderMap({ navigation: true })}
-
-      <View style={styles.gmNavInstruction}>
-        <View style={styles.gmArrowBox}>
-          <Text style={styles.gmArrowText}>↑</Text>
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.gmNavTitle}>
-            {activeStep?.instruction || "Continue on selected route"}
-          </Text>
-
-          <Text style={styles.gmNavSub}>
-            Step {Math.min(currentStepIndex + 1, Math.max(turnSteps.length, 1))} of{" "}
-            {Math.max(turnSteps.length, 1)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.gmNavFloating}>
-        <TouchableOpacity style={styles.gmCircleButton} onPress={getMyLocation}>
-          <Text style={styles.gmCircleButtonText}>⌖</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.gmCircleButton}>
-          <Text style={styles.gmCircleButtonText}>🔇</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.gmReportButton}>
-          <Text style={styles.gmReportText}>⚠ Report</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.gmNavSheet}>
-        <View style={styles.gmHandle} />
-
-        <View style={styles.gmNavMetrics}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.gmNavEta}>{displayRemainingEta} min</Text>
-            <Text style={styles.gmRouteSub}>
-              {displayRemainingDistance} km •{" "}
-              {selectedRoute?.traffic_display || "Live traffic"}
+            <Text style={styles.routeSub} numberOfLines={1}>
+              {startLocation} → {destination}
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.gmEndIconButton} onPress={endTrip}>
-            <Text style={styles.gmEndIconText}>×</Text>
-          </TouchableOpacity>
+          <View style={styles.scoreRing}>
+            <Text style={styles.scoreRingValue}>{score}</Text>
+            <Text style={styles.scoreRingLabel}>score</Text>
+          </View>
         </View>
 
-        <View style={styles.gmProgressTrack}>
-          <View
-            style={[
-              styles.gmProgressFill,
-              { width: `${progressPercent}%` },
-            ]}
+        <View style={styles.metricRow}>
+          <MetricBox value={selectedRoute.eta_text} label="ETA" />
+          <MetricBox value={selectedRoute.distance_text} label="Distance" />
+          <MetricBox
+            value={String(selectedRoute.congestion_score || "--")}
+            label="Traffic"
           />
         </View>
-        <View style={styles.gmNavigationStepsBox}>
-  <NavigationSteps
-    selectedRoute={selectedRoute}
-    currentStepIndex={currentStepIndex}
-    progressPercentage={progressPercent}
-    remainingDistanceKm={displayRemainingDistance}
-    remainingTimeMin={displayRemainingEta}
-    navigationStatus={isTracking ? "active" : "ready"}
-  />
-</View>
 
-        <TouchableOpacity style={styles.gmDangerWide} onPress={endTrip}>
-          <Text style={styles.gmDangerText}>End Trip</Text>
+        {homeSheetExpanded ? (
+          <View style={styles.flowBox}>
+            <Text style={styles.flowTitle}>FlowSync intelligence engine</Text>
+
+            <Text style={styles.flowText}>
+              {selectedRoute.recommendation_reason || recommendationReason}
+            </Text>
+
+            <InsightRow label="Routing" value={providerStatus} />
+
+            <InsightRow
+              label="Traffic"
+              value={
+                selectedRoute.live_traffic
+                  ? selectedRoute.traffic_display
+                  : "Estimate mode until provider confirms live traffic"
+              }
+            />
+
+            <InsightRow
+              label="Load"
+              value={`${selectedRoute.assigned_users || 0}/${
+                selectedRoute.road_capacity || "--"
+              } users • ${selectedRoute.load_status}`}
+            />
+
+            <InsightRow
+              label="Alerts"
+              value={`${routeIncidents.length} active road alert${
+                routeIncidents.length === 1 ? "" : "s"
+              }`}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => setScreen("routes")}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.secondaryButtonText}>Compare routes</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={startTrip}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.primaryButtonText}>Start</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={styles.hideSheetButton}
+          onPress={() => {
+            setHomeSheetHidden(true);
+            setHomeSheetExpanded(false);
+          }}
+          activeOpacity={0.86}
+        >
+          <Text style={styles.hideSheetText}>Hide route panel</Text>
         </TouchableOpacity>
       </View>
-    </View>
-  );
-}
+    );
+  }
+
+  function renderHome() {
+    return (
+      <View style={styles.fullScreen}>
+        {renderMap({ showControls: !hasRouteResult })}
+        {hasRouteResult ? renderCompactSearchBar() : renderSearchCard()}
+        {renderRoutePanel()}
+      </View>
+    );
+  }
+
+  function renderRoutes() {
+    if (!hasRouteResult || !routes.length) {
+      return (
+        <View style={styles.fullScreen}>
+          {renderMap({ showControls: false })}
+
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No routes yet</Text>
+            <Text style={styles.emptyText}>Find a FlowSync route first.</Text>
+
+            <TouchableOpacity
+              style={styles.primaryWide}
+              onPress={() => setScreen("home")}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.primaryButtonText}>Back to Search</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    const collapsed = routeSheetMode === "collapsed";
+    const hidden = routeSheetMode === "hidden";
+    const visibleRoutes = collapsed ? [selectedRoute].filter(Boolean) : routes.slice(0, 4);
+
+    return (
+      <View style={styles.fullScreen}>
+        {renderMap({ routeCompare: true, showControls: false })}
+
+        <View style={styles.routeTopCard}>
+          <Text style={styles.routeTopTitle}>Adaptive route distribution</Text>
+          <Text style={styles.routeTopSub} numberOfLines={1}>
+            {startLocation} → {destination}
+          </Text>
+        </View>
+
+        <View style={styles.routeLegend}>
+          <LegendItem color={COLORS.cyan} text="Selected" />
+          <LegendItem color="rgba(100,116,139,0.68)" text="Alternative" />
+        </View>
+
+        {hidden ? (
+          <TouchableOpacity
+            style={styles.routeHiddenPill}
+            onPress={() => setRouteSheetMode("collapsed")}
+            activeOpacity={0.9}
+          >
+            <View>
+              <Text style={styles.hiddenRouteTitle}>
+                {selectedRoute?.eta_text || "--"} • {selectedRoute?.route_id}
+              </Text>
+
+              <Text style={styles.hiddenRouteSub}>Tap to show route options</Text>
+            </View>
+
+            <Text style={styles.hiddenRouteArrow}>⌃</Text>
+          </TouchableOpacity>
+        ) : (
+          <View
+            style={[
+              styles.routeCompareSheet,
+              collapsed
+                ? styles.routeCompareSheetCollapsed
+                : styles.routeCompareSheetExpanded,
+            ]}
+          >
+            <View style={styles.sheetHandleArea} {...routePanResponder.panHandlers}>
+              <View style={styles.handle} />
+              <Text style={styles.swipeHint}>
+                {collapsed
+                  ? "Swipe up for all routes • swipe down to hide"
+                  : "Tap route line on map or swipe down to collapse"}
+              </Text>
+            </View>
+
+            <View style={styles.routeCompareHeader}>
+              <View>
+                <Text style={styles.routeCompareTitle}>Route options</Text>
+
+                <Text style={styles.routeCompareSub}>
+                  {routes.length === 1
+                    ? "Backend returned one unique road geometry"
+                    : "Balanced by ETA, traffic, and route load"}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.routeCountPill}
+                onPress={() => setRouteSheetMode(collapsed ? "expanded" : "collapsed")}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.routeCountText}>
+                  {collapsed
+                    ? "Show all"
+                    : `${routes.length} route${routes.length === 1 ? "" : "s"}`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.compactRouteList}>
+              {visibleRoutes.map((route) => {
+                const selected = route.route_id === selectedRouteId;
+                const recommended = route.route_id === recommendedRouteId;
+
+                return (
+                  <TouchableOpacity
+                    key={route.route_id}
+                    style={[
+                      styles.compactRouteCard,
+                      selected ? styles.compactRouteCardActive : null,
+                    ]}
+                    onPress={() => selectRoute(route)}
+                    activeOpacity={0.86}
+                  >
+                    <View style={styles.compactRouteLeft}>
+                      <View
+                        style={[
+                          styles.compactRouteDot,
+                          selected ? styles.compactRouteDotActive : null,
+                        ]}
+                      />
+
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.compactRouteTitleRow}>
+                          <Text style={styles.compactRouteName} numberOfLines={1}>
+                            {compactRouteName(route.route_name)}
+                          </Text>
+
+                          {recommended ? <Text style={styles.bestPill}>Best</Text> : null}
+                          {selected ? <Text style={styles.selectedPill}>Selected</Text> : null}
+                        </View>
+
+                        <Text style={styles.compactRouteReason} numberOfLines={1}>
+                          {route.live_traffic
+                            ? "TomTom live traffic"
+                            : route.traffic_display || "Traffic estimate"}{" "}
+                          • Load {route.assigned_users || 0}/{route.road_capacity || "--"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.compactRouteStats}>
+                      <Text style={styles.compactEta}>{route.eta_text}</Text>
+                      <Text style={styles.compactDistance}>{route.distance_text}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.routeActionRow}>
+              <TouchableOpacity
+                style={styles.routeBackButton}
+                onPress={() => setScreen("home")}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.routeBackText}>Back</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.routeUseButton}
+                onPress={() => setScreen("home")}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.routeUseText}>Use selected route</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  }
+    function renderNavigation() {
+    const currentDistance = formatStepDistance(activeStep?.distance_m);
+    const nextDistance = formatStepDistance(nextStep?.distance_m);
+
+    return (
+      <View style={styles.fullScreen}>
+        {renderMap({ navigation: true, showControls: false })}
+
+        <View style={styles.driveTopBanner}>
+          <View style={styles.driveTurnIcon}>
+            <Text style={styles.driveTurnIconText}>
+              {hasArrived ? "✓" : maneuverIcon(activeStep)}
+            </Text>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.driveDistanceText}>
+              {hasArrived
+                ? "Arrived"
+                : currentDistance
+                ? `In ${currentDistance}`
+                : "Now"}
+            </Text>
+
+            <Text style={styles.driveInstructionText} numberOfLines={2}>
+              {hasArrived
+                ? "Finish trip when safe"
+                : activeStep?.instruction || "Continue on selected route"}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.driveAudioButton}
+            onPress={() =>
+              speakInstruction(activeStep?.instruction || "Continue on selected route")
+            }
+            activeOpacity={0.86}
+          >
+            <Text style={styles.driveAudioText}>🔊</Text>
+          </TouchableOpacity>
+        </View>
+
+        {!hasArrived && nextStep ? (
+          <View style={styles.driveNextBanner}>
+            <Text style={styles.driveThenText}>Then</Text>
+            <Text style={styles.driveNextIcon}>{maneuverIcon(nextStep)}</Text>
+            <Text style={styles.driveNextText} numberOfLines={1}>
+              {nextDistance ? `${nextDistance} • ` : ""}
+              {nextStep.instruction || "Continue"}
+            </Text>
+          </View>
+        ) : null}
+
+        {navPreviewMode ? (
+          <View style={styles.previewBadge}>
+            <Text style={styles.previewBadgeText}>
+              Route preview mode • set start as live GPS for real car movement
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.driveFloatingControls}>
+          <TouchableOpacity
+            style={styles.driveCircleButton}
+            onPress={recenterOnUser}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.driveCircleText}>⌖</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.driveReportButton}
+            onPress={() => setReportModalVisible(true)}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.driveReportText}>⚠ Report</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.driveBottomBar}>
+          <TouchableOpacity
+            style={styles.driveExitButton}
+            onPress={requestEndTrip}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.driveExitText}>×</Text>
+          </TouchableOpacity>
+
+          <View style={styles.driveBottomCenter}>
+            <Text style={styles.driveBottomEta}>
+              {hasArrived ? "Arrived" : `${displayEta} min`}
+            </Text>
+
+            <Text style={styles.driveBottomSub} numberOfLines={1}>
+              {displayDistance} km • {progressPercent}% •{" "}
+              {selectedRoute?.live_traffic
+                ? selectedRoute?.traffic_display || "TomTom live traffic"
+                : selectedRoute?.traffic_display || "Traffic estimate"}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.driveRouteButton}
+            onPress={() => setScreen("routes")}
+            activeOpacity={0.86}
+          >
+            <Text style={styles.driveRouteText}>↱</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   function renderOperations() {
+    const activeRoute = selectedRoute;
+    const liveTraffic = activeRoute?.live_traffic;
+
+    const activeUsers =
+      dashboardData?.active_users ||
+      dashboardData?.active_drivers ||
+      activeRoute?.assigned_users ||
+      0;
+
+    const avgSpeed =
+      dashboardData?.average_speed ||
+      dashboardData?.avg_speed ||
+      activeRoute?.average_speed ||
+      "--";
+
+    const congestion =
+      activeRoute?.congestion_score || dashboardData?.congestion_score || "--";
+
     return (
       <ScrollView contentContainerStyle={styles.screenContainer}>
-        <Text style={styles.pageTitle}>Operations Hub</Text>
-        <View style={styles.card}>
-          <Text style={styles.title}>Provider status</Text>
-          <Text style={styles.muted}>Backend: {API_BASE_URL}</Text>
-          <Text style={styles.muted}>Status: {providerStatus}</Text>
+        <View style={styles.commandHero}>
+          <Text style={styles.pageKicker}>FLOW COMMAND</Text>
+          <Text style={styles.pageTitle}>Operations Hub</Text>
+          <Text style={styles.commandText}>
+            Monitor routing, traffic, parking, incidents, and role-based mobility
+            intelligence from one screen.
+          </Text>
         </View>
+
+        <View style={styles.opsGrid}>
+          <OpsTile label="Provider" value={providerStatus} sub="Routing geometry" />
+
+          <OpsTile
+            label="Traffic"
+            value={liveTraffic ? "Live" : "Estimate"}
+            sub={activeRoute?.traffic_display || trafficStatus}
+          />
+
+          <OpsTile
+            label="Active users"
+            value={String(activeUsers)}
+            sub="Route load balancing"
+          />
+
+          <OpsTile
+            label="Avg speed"
+            value={String(avgSpeed)}
+            sub="Network analytics"
+          />
+
+          <OpsTile
+            label="Congestion"
+            value={String(congestion)}
+            sub="Traffic pressure"
+          />
+
+          <OpsTile
+            label="Alerts"
+            value={String(routeIncidents.length)}
+            sub="Reports + incidents"
+          />
+        </View>
+
         <View style={styles.card}>
-          <Text style={styles.title}>Today</Text>
-          <View style={styles.metricsRow}>
-            <Metric label="Trips" value="124" />
-            <Metric label="Avoided" value="18%" />
-            <Metric label="CO₂" value="Low" />
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.title}>AI parking prediction</Text>
+            <Pill label="Future scope" tone="cyan" />
           </View>
+
+          {parkingForDisplay.slice(0, 3).map((item) => (
+            <ParkingRow key={item.id} item={item} />
+          ))}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>Role intelligence</Text>
+          <Text style={styles.muted}>
+            {user?.role === "admin"
+              ? "Admin mode highlights system load, provider readiness, route distribution, incidents, and dashboard metrics."
+              : user?.role === "emergency"
+              ? "Emergency mode sends priority route context to the backend and keeps incident intelligence visible."
+              : "Driver mode focuses on search, selected-route consistency, turn-by-turn navigation, reports, and trip progress."}
+          </Text>
         </View>
       </ScrollView>
     );
@@ -1847,11 +3153,18 @@ function renderNavigation() {
     return (
       <ScrollView contentContainerStyle={styles.screenContainer}>
         <Text style={styles.pageTitle}>Profile</Text>
+
         <View style={styles.card}>
           <Text style={styles.title}>{user?.name || "FlowSync User"}</Text>
           <Text style={styles.muted}>{user?.email || email}</Text>
           <Text style={styles.muted}>Role: {user?.role || "driver"}</Text>
-          <TouchableOpacity style={styles.dangerButton} onPress={() => { setToken(""); setUser(null); setScreen("login"); }}>
+          <Text style={styles.muted}>API: {API_BASE_URL}</Text>
+
+          <TouchableOpacity
+            style={styles.dangerButton}
+            onPress={logout}
+            activeOpacity={0.86}
+          >
             <Text style={styles.dangerButtonText}>Logout</Text>
           </TouchableOpacity>
         </View>
@@ -1863,26 +3176,58 @@ function renderNavigation() {
     return (
       <ScrollView contentContainerStyle={styles.screenContainer}>
         <Text style={styles.pageTitle}>Trip summary</Text>
+
         <View style={styles.card}>
           {tripSummary ? (
             <>
-              <Text style={styles.title}>Trip completed</Text>
-              <Text style={styles.routeName}>{tripSummary.route_name}</Text>
-              <Text style={styles.muted}>{tripSummary.start_location} → {tripSummary.destination}</Text>
+              <Text style={styles.title}>
+                {tripSummary.status === "completed"
+                  ? "Trip completed"
+                  : "Trip ended early"}
+              </Text>
+
+              <Text style={styles.routeSummaryName}>{tripSummary.route_name}</Text>
+
+              <Text style={styles.muted}>
+                {tripSummary.start_location} → {tripSummary.destination}
+              </Text>
+
               <View style={styles.metricsRow}>
-                <Metric label="Time" value={tripSummary.eta_text} />
-                <Metric label="Distance" value={tripSummary.distance_text} />
-                <Metric label="Score" value={String(tripSummary.flowsync_score)} />
+                <Metric label="Time" value={tripSummary.eta_text || "--"} />
+                <Metric label="Distance" value={tripSummary.distance_text || "--"} />
+                <Metric
+                  label="Score"
+                  value={String(tripSummary.flowsync_score || "--")}
+                />
               </View>
-              <Text style={styles.selectedText}>Route used: {tripSummary.route_id}</Text>
-              <TouchableOpacity style={styles.primaryButton} onPress={() => setScreen("home")}>
+
+              <Text style={styles.selectedText}>
+                Route used: {tripSummary.route_id}
+              </Text>
+
+              <Text style={styles.muted}>
+                {tripSummary.live_traffic
+                  ? tripSummary.traffic_display
+                  : "Traffic estimate"}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.primaryWide}
+                onPress={() => setScreen("home")}
+                activeOpacity={0.86}
+              >
                 <Text style={styles.primaryButtonText}>Back to Home</Text>
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text style={styles.muted}>No completed trip yet.</Text>
-              <TouchableOpacity style={styles.primaryButton} onPress={() => setScreen("home")}>
+              <Text style={styles.muted}>No trip summary yet.</Text>
+
+              <TouchableOpacity
+                style={styles.primaryWide}
+                onPress={() => setScreen("home")}
+                activeOpacity={0.86}
+              >
                 <Text style={styles.primaryButtonText}>Plan Route</Text>
               </TouchableOpacity>
             </>
@@ -1892,23 +3237,101 @@ function renderNavigation() {
     );
   }
 
+  function renderTabs() {
+    if (!token || screen === "nav") return null;
+
+    const tabs = [
+      ["Explore", "home"],
+      ["Routes", "routes"],
+      ["Ops", "operations"],
+      ["Me", "account"],
+    ];
+
+    return (
+      <View style={styles.bottomTabs}>
+        {tabs.map(([label, value]) => (
+          <TouchableOpacity
+            key={value}
+            style={[
+              styles.bottomTab,
+              screen === value ? styles.bottomTabActive : null,
+            ]}
+            onPress={() => setScreen(value)}
+            activeOpacity={0.86}
+          >
+            <Text
+              style={[
+                styles.bottomTabText,
+                screen === value ? styles.bottomTabTextActive : null,
+              ]}
+            >
+              {label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  }
+
+  function renderReportModal() {
+    return (
+      <Modal
+        visible={reportModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReportModalVisible(false)}
+      >
+        <View style={styles.modalShade}>
+          <View style={styles.reportSheet}>
+            <View style={styles.reportHeader}>
+              <Text style={styles.reportTitle}>What do you see?</Text>
+
+              <TouchableOpacity
+                onPress={() => setReportModalVisible(false)}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.reportClose}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.reportGrid}>
+              {REPORT_TYPES.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.reportItem}
+                  onPress={() => submitReport(item)}
+                  activeOpacity={0.86}
+                >
+                  <View style={styles.reportIcon}>
+                    <Text style={styles.reportIconText}>{item.icon}</Text>
+                  </View>
+
+                  <Text style={styles.reportLabel}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
   if (!token) {
     return (
       <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
         {renderLogin()}
         {loading ? <LoadingOverlay /> : null}
-        {error ? <ErrorToast message={error} /> : null}
+        {error ? <ErrorToast message={error} onClose={() => setError("")} /> : null}
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" />
-      {renderHeader()}
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
 
-      <View style={styles.contentArea}>
+      <View style={styles.content}>
         {screen === "home" && renderHome()}
         {screen === "routes" && renderRoutes()}
         {screen === "nav" && renderNavigation()}
@@ -1918,17 +3341,130 @@ function renderNavigation() {
       </View>
 
       {renderTabs()}
+      {renderReportModal()}
       {loading ? <LoadingOverlay /> : null}
-      {error ? <ErrorToast message={error} /> : null}
+      {error ? <ErrorToast message={error} onClose={() => setError("")} /> : null}
+      {toast ? <Toast message={toast} /> : null}
     </SafeAreaView>
+  );
+}
+function Pill({ label, tone = "green" }) {
+  const palette =
+    {
+      green: {
+        bg: COLORS.greenSoft,
+        fg: "#86efac",
+        border: "rgba(34,197,94,0.35)",
+      },
+      cyan: {
+        bg: COLORS.cyanSoft,
+        fg: "#7dd3fc",
+        border: "rgba(34,211,238,0.35)",
+      },
+      red: {
+        bg: "rgba(239,68,68,0.14)",
+        fg: "#fca5a5",
+        border: "rgba(239,68,68,0.35)",
+      },
+    }[tone] || {
+      bg: COLORS.greenSoft,
+      fg: "#86efac",
+      border: "rgba(34,197,94,0.35)",
+    };
+
+  return (
+    <View
+      style={[
+        styles.pill,
+        {
+          backgroundColor: palette.bg,
+          borderColor: palette.border,
+        },
+      ]}
+    >
+      <Text style={[styles.pillText, { color: palette.fg }]}>{label}</Text>
+    </View>
   );
 }
 
 function Metric({ label, value }) {
   return (
     <View style={styles.metric}>
-      <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
+  );
+}
+
+function MetricBox({ label, value }) {
+  return (
+    <View style={styles.miniMetric}>
+      <Text style={styles.miniMetricValue}>{value}</Text>
+      <Text style={styles.miniMetricLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function InsightRow({ label, value }) {
+  return (
+    <View style={styles.insightRow}>
+      <Text style={styles.insightLabel}>{label}</Text>
+      <Text style={styles.insightValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function LegendItem({ color, text }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendLine, { backgroundColor: color }]} />
+      <Text style={styles.legendText}>{text}</Text>
+    </View>
+  );
+}
+
+function OpsTile({ label, value, sub }) {
+  return (
+    <View style={styles.opsTile}>
+      <Text style={styles.opsTileLabel}>{label}</Text>
+      <Text style={styles.opsTileValue} numberOfLines={1}>
+        {value}
+      </Text>
+      <Text style={styles.opsTileSub} numberOfLines={2}>
+        {sub}
+      </Text>
+    </View>
+  );
+}
+
+function ParkingRow({ item }) {
+  const color =
+    item.availability >= 70
+      ? COLORS.green
+      : item.availability >= 35
+      ? COLORS.amber
+      : COLORS.red;
+
+  return (
+    <View style={styles.parkingRow}>
+      <View style={[styles.parkingBadge, { borderColor: color }]}>
+        <Text style={[styles.parkingBadgeText, { color }]}>
+          {item.name.slice(-1)}
+        </Text>
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={styles.parkingName}>{item.name}</Text>
+        <Text style={styles.muted}>
+          {item.walk_min} min walk • {item.difficulty} difficulty
+        </Text>
+      </View>
+
+      <Text style={[styles.parkingPercent, { color }]}>
+        {item.availability}%
+      </Text>
     </View>
   );
 }
@@ -1936,928 +3472,852 @@ function Metric({ label, value }) {
 function LoadingOverlay() {
   return (
     <View style={styles.loadingOverlay}>
-      <ActivityIndicator size="large" color="#22c55e" />
-      <Text style={styles.muted}>Loading...</Text>
+      <ActivityIndicator size="large" color={COLORS.green} />
+      <Text style={styles.loadingText}>Syncing city intelligence...</Text>
     </View>
   );
 }
 
-function ErrorToast({ message }) {
+function ErrorToast({ message, onClose }) {
   return (
-    <View style={styles.errorToast}>
+    <TouchableOpacity
+      style={styles.errorToast}
+      onPress={onClose}
+      activeOpacity={0.9}
+    >
       <Text style={styles.errorText}>{message}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-const { width } = Dimensions.get("window");
+function Toast({ message }) {
+  return (
+    <View style={styles.toast}>
+      <Text style={styles.toastText}>{message}</Text>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#06111f" },
-  contentArea: { flex: 1 },
-  screenContainer: { paddingHorizontal: 16, paddingBottom: 100 },
-  loginContainer: { padding: 18, paddingBottom: 50 },
-  logoHero: { color: "#fff", fontSize: 46, fontWeight: "900", letterSpacing: -2, marginTop: 20 },
-  loginSubtitle: { color: "#9fb4c8", fontSize: 18, marginTop: 4, marginBottom: 22 },
-  headerCompact: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 10, paddingBottom: 8 },
-  logoSmall: { color: "#fff", fontSize: 28, fontWeight: "900", letterSpacing: -1 },
-  subtitleSmall: { color: "#9fb4c8", fontSize: 12, marginTop: 2 },
-  liveBadge: { backgroundColor: "#052e1a", borderColor: "#22c55e", borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
-  liveText: { color: "#86efac", fontWeight: "900", fontSize: 11 },
-  loginCard: { backgroundColor: "#0f2440", borderRadius: 28, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: "#1e3a5f" },
-  heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", lineHeight: 36 },
-  bodyText: { color: "#b6c7d8", marginTop: 8, lineHeight: 21 },
-  card: { backgroundColor: "#101c2e", borderRadius: 24, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: "#1f334f" },
-  title: { color: "#fff", fontSize: 20, fontWeight: "900", marginBottom: 12 },
-  pageTitle: { color: "#fff", fontSize: 28, fontWeight: "900", marginTop: 8, marginBottom: 10 },
-  label: { color: "#9fb4c8", marginBottom: 6, marginTop: 12, fontWeight: "700" },
-  input: { backgroundColor: "#07111f", borderColor: "#1f334f", borderWidth: 1, borderRadius: 16, color: "#fff", paddingHorizontal: 14, paddingVertical: 13, marginBottom: 8 },
-  primaryButton: { backgroundColor: "#22c55e", borderRadius: 18, paddingVertical: 15, alignItems: "center", marginTop: 12 },
-  primaryButtonText: { color: "#03120a", fontWeight: "900", fontSize: 15 },
-  outlineButton: { borderColor: "#38bdf8", borderWidth: 1, borderRadius: 18, paddingVertical: 15, alignItems: "center", marginTop: 10 },
-  outlineButtonText: { color: "#7dd3fc", fontWeight: "900" },
-  dangerButton: { backgroundColor: "#ef4444", borderRadius: 18, paddingVertical: 15, alignItems: "center", marginTop: 10 },
-  dangerButtonText: { color: "#2b0505", fontWeight: "900" },
-  demoRow: { backgroundColor: "#0b1626", borderRadius: 16, padding: 12, marginTop: 8, borderWidth: 1, borderColor: "#1f334f" },
-  listTitle: { color: "#fff", fontWeight: "900" },
-  muted: { color: "#9fb4c8", fontSize: 13, marginTop: 4 },
-  searchPanel: { backgroundColor: "#101c2e", borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "#1f334f" },
-  sectionKicker: { color: "#22c55e", fontWeight: "900", fontSize: 11, textTransform: "uppercase", letterSpacing: 1.3, marginBottom: 8 },
-  inputRow: { gap: 8 },
-  routeInput: { backgroundColor: "#07111f", borderColor: "#1f334f", borderWidth: 1, borderRadius: 14, color: "#fff", paddingHorizontal: 14, paddingVertical: 12 },
-  swapButton: { alignSelf: "center", backgroundColor: "#0b1626", width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderColor: "#1f334f", borderWidth: 1 },
-  swapText: { color: "#7dd3fc", fontSize: 18, fontWeight: "900" },
-  preferenceScroll: { marginTop: 12 },
-  preferenceChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, backgroundColor: "#0b1626", borderColor: "#1f334f", borderWidth: 1, marginRight: 8 },
-  preferenceChipActive: { backgroundColor: "#22c55e", borderColor: "#22c55e" },
-  preferenceText: { color: "#9fb4c8", fontWeight: "900", textTransform: "capitalize" },
-  preferenceTextActive: { color: "#03120a" },
-  mapCard: { height: Math.min(width * 1.16, 470), borderRadius: 28, overflow: "hidden", marginBottom: 12, borderWidth: 1, borderColor: "#1f334f" },
-  mapCardCompact: { height: Math.min(width * 0.82, 360) },
-  map: { flex: 1 },
-  mapSearchOverlay: { position: "absolute", top: 14, left: 14, right: 14, backgroundColor: "rgba(6,17,31,0.92)", borderRadius: 18, padding: 14, borderWidth: 1, borderColor: "#1f334f" },
-  overlaySmall: { color: "#22c55e", fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
-  overlayTitle: { color: "#fff", fontSize: 16, fontWeight: "900", marginTop: 3 },
-  locationFab: { position: "absolute", right: 14, bottom: 14, width: 48, height: 48, borderRadius: 24, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  fabText: { color: "#06111f", fontSize: 24, fontWeight: "900" },
-  routeSheet: { backgroundColor: "#101c2e", borderRadius: 28, padding: 16, borderWidth: 1, borderColor: "#1f334f", marginBottom: 16 },
-  sheetTopRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  routeName: { color: "#fff", fontSize: 18, fontWeight: "900", lineHeight: 24 },
-  recommendedPill: { color: "#03120a", backgroundColor: "#22c55e", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, fontSize: 11, fontWeight: "900", overflow: "hidden" },
-  selectedPill: { color: "#03120a", backgroundColor: "#7dd3fc", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, fontSize: 11, fontWeight: "900", overflow: "hidden" },
-  metricsRow: { flexDirection: "row", marginTop: 14, gap: 8 },
-  metric: { flex: 1, backgroundColor: "#07111f", borderRadius: 18, padding: 12, alignItems: "center" },
-  metricValue: { color: "#fff", fontSize: 18, fontWeight: "900", textAlign: "center" },
-  metricLabel: { color: "#9fb4c8", fontSize: 11, marginTop: 3, textAlign: "center" },
-  selectedBox: { backgroundColor: "#07111f", borderRadius: 16, padding: 12, marginTop: 12, borderWidth: 1, borderColor: "#1f334f" },
-  selectedText: { color: "#86efac", fontWeight: "900" },
-  twoButtonRow: { flexDirection: "row", gap: 10, marginTop: 2 },
-  outlineButtonHalf: { flex: 1, borderColor: "#38bdf8", borderWidth: 1, borderRadius: 18, paddingVertical: 15, alignItems: "center", marginTop: 10 },
-  primaryButtonHalf: { flex: 1, backgroundColor: "#22c55e", borderRadius: 18, paddingVertical: 15, alignItems: "center", marginTop: 10 },
-  routeCard: { backgroundColor: "#101c2e", borderRadius: 24, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#1f334f" },
-  routeCardActive: { borderColor: "#22c55e", backgroundColor: "#123458" },
-  reasonText: { color: "#dbeafe", lineHeight: 20, marginTop: 10 },
-  loadTrack: { height: 10, borderRadius: 999, backgroundColor: "#07111f", overflow: "hidden", marginTop: 12 },
-  loadFill: { height: 10, backgroundColor: "#22c55e", borderRadius: 999 },
-  nextTurnCard: { backgroundColor: "#22c55e", borderRadius: 26, padding: 18, marginBottom: 12 },
-  nextTurnLabel: { color: "#052e1a", fontWeight: "900", fontSize: 12, textTransform: "uppercase" },
-  nextTurnText: { color: "#03120a", fontSize: 24, fontWeight: "900", lineHeight: 30, marginTop: 5 },
-  navSheet: { backgroundColor: "#101c2e", borderRadius: 24, padding: 16, borderWidth: 1, borderColor: "#1f334f", marginBottom: 16 },
-  progressTrack: { height: 12, backgroundColor: "#07111f", borderRadius: 999, overflow: "hidden", marginTop: 14 },
-  progressFill: { height: 12, backgroundColor: "#22c55e", borderRadius: 999 },
-  alertBox: { backgroundColor: "#3f2f12", borderColor: "#f59e0b", borderWidth: 1, borderRadius: 16, padding: 12, marginTop: 12 },
-  alertTitle: { color: "#fcd34d", fontWeight: "900" },
-  stepRow: { flexDirection: "row", backgroundColor: "#0b1626", borderRadius: 16, padding: 12, marginTop: 8, borderWidth: 1, borderColor: "#1f334f" },
-  activeStep: { borderColor: "#22c55e", backgroundColor: "#123458" },
-  stepCircle: { backgroundColor: "#22c55e", color: "#03120a", width: 30, height: 30, borderRadius: 15, textAlign: "center", paddingTop: 5, fontWeight: "900", marginRight: 10 },
-  stepText: { color: "#dbeafe", flex: 1, lineHeight: 21, fontSize: 14 },
-  bottomTabs: { position: "absolute", left: 14, right: 14, bottom: 10, flexDirection: "row", backgroundColor: "#0b1626", borderRadius: 24, padding: 8, borderWidth: 1, borderColor: "#1f334f" },
-  bottomTab: { flex: 1, alignItems: "center", paddingVertical: 10 },
-  bottomTabText: { color: "#9fb4c8", fontWeight: "900", fontSize: 12 },
-  bottomTabTextActive: { color: "#22c55e" },
-    gmScreen: {
+  safe: {
     flex: 1,
-    position: "relative",
-    backgroundColor: "#06111f",
+    backgroundColor: COLORS.bg,
+    paddingTop: SAFE_TOP,
   },
-  gmMapShell: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "#06111f",
-  },
-  gmMap: {
+  content: {
     flex: 1,
   },
-  gmSearchCard: {
-    position: "absolute",
-    top: 14,
-    left: 16,
-    right: 16,
-    backgroundColor: "rgba(20,20,20,0.94)",
+  fullScreen: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+  screenContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: TAB_HEIGHT + 18,
+    paddingTop: 14,
+  },
+
+  loginShell: {
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 42,
+  },
+  loginBrandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 20,
+  },
+  logoBubble: {
+    width: 62,
+    height: 62,
+    borderRadius: 24,
+    backgroundColor: COLORS.green,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoBubbleText: {
+    color: COLORS.black,
+    fontWeight: "900",
+    fontSize: 21,
+  },
+  loginLogoText: {
+    color: COLORS.text,
+    fontSize: 43,
+    fontWeight: "900",
+    letterSpacing: -2.1,
+  },
+  loginSubline: {
+    color: COLORS.muted,
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  loginHeroCard: {
+    backgroundColor: COLORS.panel2,
+    borderRadius: 32,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+    shadowColor: COLORS.cyan,
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 7,
+  },
+  heroPillRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+  loginHeroTitle: {
+    color: COLORS.text,
+    fontSize: 33,
+    lineHeight: 40,
+    fontWeight: "900",
+    letterSpacing: -0.6,
+  },
+  loginHeroText: {
+    color: "#cbd5e1",
+    fontSize: 16,
+    lineHeight: 24,
+    marginTop: 12,
+    marginBottom: 18,
+  },
+  loginLabel: {
+    color: "#cbd5e1",
+    fontSize: 15,
+    fontWeight: "900",
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  loginInput: {
+    backgroundColor: "#050b16",
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  loginButton: {
+    backgroundColor: COLORS.green,
+    borderRadius: 20,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginTop: 20,
+  },
+  loginButtonText: {
+    color: COLORS.black,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  quickCard: {
+    backgroundColor: COLORS.panel2,
     borderRadius: 28,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  gmSearchTop: {
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  quickTitle: {
+    color: COLORS.text,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  quickHint: {
+    color: COLORS.muted,
+    fontWeight: "800",
+  },
+  quickAccount: {
+    backgroundColor: "#070d18",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+    padding: 16,
+    marginTop: 12,
     flexDirection: "row",
     alignItems: "center",
   },
-  gmSearchIcon: {
-    color: "#22c55e",
-    fontSize: 24,
-    fontWeight: "900",
-    marginRight: 10,
+  quickAccountActive: {
+    borderColor: COLORS.green,
+    backgroundColor: "#062412",
   },
-  gmSearchInputs: {
+  quickRole: {
+    color: COLORS.text,
+    fontSize: 19,
+    fontWeight: "900",
+  },
+  quickRoleActive: {
+    color: "#86efac",
+  },
+  quickDescription: {
+    color: COLORS.muted,
+    marginTop: 4,
+    fontWeight: "700",
+  },
+  quickEmail: {
+    color: "#7dd3fc",
+    marginTop: 8,
+    fontWeight: "900",
+  },
+  quickChevron: {
+    color: COLORS.faint,
+    fontSize: 34,
+    fontWeight: "300",
+  },
+
+  pill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    alignSelf: "flex-start",
+  },
+  pillText: {
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+
+  mapShell: {
     flex: 1,
   },
-  gmSearchInput: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
-    paddingVertical: 5,
+  map: {
+    flex: 1,
   },
-  gmDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    marginVertical: 4,
-  },
-  gmSwapButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#2b2b2b",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 10,
-  },
-  gmSwapText: {
-    color: "#7dd3fc",
-    fontSize: 20,
-    fontWeight: "900",
-  },
-  gmFindButton: {
-    backgroundColor: "#22c55e",
-    paddingVertical: 12,
-    borderRadius: 20,
-    alignItems: "center",
-    marginTop: 12,
-  },
-  gmFindButtonText: {
-    color: "#03120a",
-    fontWeight: "900",
-    fontSize: 15,
-  },
-  gmChipRow: {
+  mapButtons: {
     position: "absolute",
-    top: 160,
-    left: 16,
-    right: 0,
+    right: 14,
+    top: 158,
+    gap: 10,
+    zIndex: 35,
   },
-  gmChip: {
-    backgroundColor: "rgba(35,35,35,0.95)",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  gmChipText: {
-    color: "#ffffff",
-    fontWeight: "800",
-  },
-  gmMapButtons: {
-    position: "absolute",
-    right: 16,
-    top: 230,
-    gap: 12,
-  },
-  gmCircleButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+  circleButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "rgba(255,255,255,0.96)",
     alignItems: "center",
     justifyContent: "center",
-    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  gmCircleButtonText: {
-    color: "#172033",
+  circleButtonDanger: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  circleButtonText: {
+    color: COLORS.black,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+
+  searchCard: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    right: 14,
+    backgroundColor: COLORS.panel,
+    borderRadius: 26,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    zIndex: 100,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+  },
+  searchHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+    gap: 12,
+  },
+  searchHeaderTitle: {
+    color: COLORS.text,
+    fontSize: 21,
+    fontWeight: "900",
+  },
+  searchHeaderSub: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  searchTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  routeDots: {
+    width: 24,
+    alignItems: "center",
+    paddingTop: 10,
+    marginRight: 8,
+  },
+  dotStart: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.green,
+  },
+  dotLine: {
+    width: 2,
+    height: 45,
+    backgroundColor: "rgba(148,163,184,0.5)",
+    marginVertical: 5,
+  },
+  dotEnd: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.red,
+  },
+  searchInputs: {
+    flex: 1,
+  },
+  searchInput: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "900",
+    paddingVertical: 6,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginVertical: 3,
+  },
+  swapButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: COLORS.cyanSoft,
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
+    marginTop: 35,
+  },
+  swapText: {
+    color: "#7dd3fc",
     fontSize: 22,
     fontWeight: "900",
   },
-  gmRouteSheet: {
+  useLocationButton: {
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.greenSoft,
+    borderColor: "rgba(34,197,94,0.4)",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 4,
+    marginBottom: 3,
+  },
+  useLocationText: {
+    color: "#86efac",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  preferenceRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+  preferenceChip: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 9,
+    alignItems: "center",
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.12)",
+  },
+  preferenceChipActive: {
+    backgroundColor: COLORS.greenSoft,
+    borderColor: "rgba(34,197,94,0.38)",
+  },
+  preferenceText: {
+    color: "#cbd5e1",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  preferenceTextActive: {
+    color: "#86efac",
+  },
+  findButton: {
+    backgroundColor: COLORS.green,
+    borderRadius: 18,
+    paddingVertical: 13,
+    alignItems: "center",
+    marginTop: 11,
+  },
+  findButtonText: {
+    color: COLORS.black,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  savedStrip: {
+    marginTop: 12,
+  },
+  savedChip: {
+    backgroundColor: "rgba(15,23,42,0.82)",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  savedChipText: {
+    color: COLORS.text,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+
+  suggestionBox: {
+    backgroundColor: "#06111f",
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+    borderRadius: 16,
+    marginTop: 8,
+    marginBottom: 6,
+    maxHeight: 230,
+    overflow: "hidden",
+    zIndex: 200,
+    elevation: 12,
+  },
+  suggestionScroll: {
+    maxHeight: 230,
+  },
+  suggestionItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  suggestionTitle: {
+    color: COLORS.text,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  suggestionSub: {
+    color: "#cbd5e1",
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  suggestionStatus: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    fontWeight: "800",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+
+  compactSearchBar: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    right: 14,
+    backgroundColor: COLORS.panel,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    zIndex: 90,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+  },
+  compactSearchMain: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  compactSearchHint: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+
+  hiddenRoutePill: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: PANEL_BOTTOM + 10,
+    backgroundColor: COLORS.panel,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    zIndex: 80,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+  },
+  hiddenRouteTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  hiddenRouteSub: {
+    color: COLORS.muted,
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "700",
+  },
+  hiddenRouteArrow: {
+    color: COLORS.green,
+    fontSize: 25,
+    fontWeight: "900",
+  },
+  routeSheet: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 72,
-    backgroundColor: "rgba(18,18,18,0.97)",
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    padding: 18,
-    paddingBottom: 20,
+    bottom: PANEL_BOTTOM,
+    backgroundColor: COLORS.panel,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    zIndex: 80,
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.18)",
   },
-  gmHandle: {
-    alignSelf: "center",
-    width: 44,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.28)",
-    marginBottom: 14,
+  routeSheetCollapsed: {
+    paddingBottom: 18,
   },
-  gmSheetHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
+  routeSheetExpanded: {
+    paddingBottom: 22,
   },
-  gmRouteTitle: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontWeight: "900",
-    lineHeight: 30,
-  },
-  gmRouteSub: {
-    color: "#b8c2d4",
-    fontSize: 14,
-    marginTop: 4,
-  },
-  gmRecommended: {
-    color: "#03120a",
-    backgroundColor: "#22c55e",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: "900",
-    overflow: "hidden",
-  },
-  gmSelected: {
-    color: "#03120a",
-    backgroundColor: "#7dd3fc",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: "900",
-    overflow: "hidden",
-  },
-  gmMetrics: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 16,
-  },
-  gmMetricBox: {
-    flex: 1,
-    backgroundColor: "#202124",
-    borderRadius: 18,
-    padding: 12,
+  sheetHandleArea: {
     alignItems: "center",
   },
-  gmMetricValue: {
-    color: "#ffffff",
+  handle: {
+    width: 50,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.32)",
+    marginBottom: 8,
+  },
+  swipeHint: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 10,
+  },
+  routeLabelRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 9,
+  },
+  routeTitle: {
+    color: COLORS.text,
+    fontSize: 27,
+    lineHeight: 33,
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+  routeSub: {
+    color: "#cbd5e1",
+    fontSize: 15,
+    marginTop: 6,
+    fontWeight: "700",
+  },
+  scoreRing: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 2,
+    borderColor: COLORS.green,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
+    backgroundColor: COLORS.greenSoft,
+  },
+  scoreRingValue: {
+    color: "#86efac",
     fontSize: 20,
     fontWeight: "900",
   },
-  gmMetricLabel: {
-    color: "#a8b3c4",
-    fontSize: 12,
-    marginTop: 4,
+  scoreRingLabel: {
+    color: "#cbd5e1",
+    fontSize: 10,
+    fontWeight: "800",
   },
-  gmFlowBox: {
-    backgroundColor: "#0b1626",
-    borderColor: "#1f334f",
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 12,
-    marginTop: 14,
-  },
-  gmFlowTitle: {
-    color: "#86efac",
-    fontWeight: "900",
-    marginBottom: 4,
-  },
-  gmFlowText: {
-    color: "#dbeafe",
-    lineHeight: 20,
-  },
-  gmFlowSmall: {
-    color: "#9fb4c8",
-    fontSize: 12,
-    marginTop: 6,
-  },
-  gmActionRow: {
+  metricRow: {
     flexDirection: "row",
     gap: 12,
+    marginTop: 16,
+  },
+  miniMetric: {
+    flex: 1,
+    backgroundColor: "rgba(30,41,59,0.82)",
+    borderRadius: 18,
+    paddingVertical: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  miniMetricValue: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  miniMetricLabel: {
+    color: COLORS.muted,
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  flowBox: {
+    backgroundColor: "rgba(8,47,73,0.5)",
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.22)",
+    borderRadius: 20,
+    padding: 14,
     marginTop: 14,
   },
-  gmSecondaryButton: {
+  flowTitle: {
+    color: "#7dd3fc",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  flowText: {
+    color: COLORS.text,
+    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  insightRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 10,
+  },
+  insightLabel: {
+    color: COLORS.muted,
+    fontWeight: "900",
+    width: 78,
+  },
+  insightValue: {
+    color: "#dbeafe",
+    fontWeight: "800",
     flex: 1,
-    borderColor: "#38bdf8",
-    borderWidth: 1,
-    borderRadius: 22,
+    textAlign: "right",
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  primaryButton: {
+    flex: 1,
+    backgroundColor: COLORS.green,
+    borderRadius: 18,
     paddingVertical: 15,
     alignItems: "center",
   },
-  gmSecondaryButtonText: {
+  primaryButtonText: {
+    color: COLORS.black,
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  secondaryButton: {
+    flex: 1,
+    borderColor: COLORS.cyan,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 15,
+    alignItems: "center",
+    backgroundColor: COLORS.cyanSoft,
+  },
+  secondaryButtonText: {
     color: "#7dd3fc",
     fontWeight: "900",
+    fontSize: 15,
   },
-  gmPrimaryButton: {
-    flex: 1,
-    backgroundColor: "#22c55e",
-    borderRadius: 22,
-    paddingVertical: 15,
+  hideSheetButton: {
     alignItems: "center",
+    paddingVertical: 12,
   },
-  gmPrimaryButtonText: {
-    color: "#03120a",
+  hideSheetText: {
+    color: COLORS.muted,
     fontWeight: "900",
   },
-  gmBottomTabs: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 74,
-    flexDirection: "row",
-    backgroundColor: "rgba(18,18,18,0.98)",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-  },
-  gmBottomTab: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gmBottomTabActive: {
-    backgroundColor: "rgba(34,197,94,0.14)",
-    borderRadius: 18,
-  },
-  gmBottomTabText: {
-    color: "#9ca3af",
-    fontWeight: "900",
-    fontSize: 12,
-  },
-  gmBottomTabTextActive: {
-    color: "#22c55e",
-  },
-  gmNavInstruction: {
+
+  routeTopCard: {
     position: "absolute",
     top: 16,
     left: 16,
     right: 16,
-    backgroundColor: "#006d6b",
-    borderRadius: 24,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-  },
-  gmArrowBox: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gmArrowText: {
-    color: "#ffffff",
-    fontSize: 42,
-    fontWeight: "900",
-  },
-  gmNavTitle: {
-    color: "#ffffff",
-    fontSize: 22,
-    fontWeight: "900",
-    lineHeight: 27,
-  },
-  gmNavSub: {
-    color: "#d1fae5",
-    marginTop: 5,
-    fontSize: 13,
-  },
-  gmNavFloating: {
-    position: "absolute",
-    right: 16,
-    top: 255,
-    alignItems: "flex-end",
-    gap: 12,
-  },
-  gmReportButton: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    paddingHorizontal: 18,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gmReportText: {
-    color: "#172033",
-    fontWeight: "900",
-  },
-  gmNavSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(255,255,255,0.98)",
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    backgroundColor: COLORS.panel,
+    borderRadius: 28,
     padding: 18,
-    paddingBottom: 24,
+    zIndex: 70,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
   },
-  gmNavMetrics: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  gmNavEta: {
-    color: "#dc2626",
-    fontSize: 32,
+  routeTopTitle: {
+    color: COLORS.text,
+    fontSize: 28,
     fontWeight: "900",
+    letterSpacing: -0.5,
   },
-  gmEndIconButton: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    borderWidth: 2,
-    borderColor: "#9ca3af",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gmEndIconText: {
-    color: "#111827",
-    fontSize: 34,
-    fontWeight: "800",
-  },
-  gmProgressTrack: {
-    height: 10,
-    backgroundColor: "#e5e7eb",
-    borderRadius: 999,
-    overflow: "hidden",
-    marginTop: 14,
-  },
-  gmProgressFill: {
-    height: 10,
-    backgroundColor: "#22c55e",
-    borderRadius: 999,
-  },
-  gmDangerWide: {
-    backgroundColor: "#ef4444",
-    borderRadius: 22,
-    paddingVertical: 15,
-    alignItems: "center",
-    marginTop: 12,
-  },
-  gmDangerText: {
-    color: "#2b0505",
-    fontWeight: "900",
-  },
-    gmRouteSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 72,
-    backgroundColor: "rgba(18,18,18,0.97)",
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    paddingBottom: 18,
-  },
-  gmRouteSheetCollapsed: {
-    height: 265,
-  },
-  gmRouteSheetExpanded: {
-    maxHeight: 540,
-  },
-  gmSheetHandleButton: {
-    alignItems: "center",
-    paddingTop: 4,
-    paddingBottom: 8,
-  },
-  gmSwipeHint: {
-    color: "#9ca3af",
-    fontSize: 11,
+  routeTopSub: {
+    color: "#cbd5e1",
+    fontSize: 16,
+    marginTop: 6,
     fontWeight: "700",
-    marginTop: 4,
   },
-  gmSheetToggleButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#202124",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gmSheetToggleText: {
-    color: "#7dd3fc",
-    fontSize: 24,
-    fontWeight: "900",
-  },
-  gmMiniMetrics: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 12,
-  },
-  gmMiniMetric: {
-    flex: 1,
-    backgroundColor: "#202124",
+  routeLegend: {
+    position: "absolute",
+    top: 132,
+    left: 16,
+    backgroundColor: COLORS.panel,
     borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: "center",
+    padding: 14,
+    gap: 8,
+    zIndex: 70,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  gmMiniMetricValue: {
-    color: "#ffffff",
-    fontSize: 18,
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  legendLine: {
+    width: 30,
+    height: 5,
+    borderRadius: 999,
+  },
+  legendText: {
+    color: COLORS.text,
     fontWeight: "900",
-    textAlign: "center",
-  },
-  gmMiniMetricLabel: {
-    color: "#a8b3c4",
-    fontSize: 11,
-    marginTop: 3,
-  },
-  gmNavigationStepsBox: {
-    marginTop: 14,
-    maxHeight: 180,
-    overflow: "hidden",
-  },
-  loadingOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(6,17,31,0.65)" },
-  errorToast: { position: "absolute", left: 16, right: 16, bottom: 88, backgroundColor: "#3f1212", borderColor: "#ef4444", borderWidth: 1, borderRadius: 16, padding: 14 },
-    errorText: {
-    color: "#fecaca",
-  },
-    gmRouteSheetCollapsed: {
-    maxHeight: 345,
-  },
-  gmSheetHandleButton: {
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  gmCollapsedHint: {
-    color: "#9fb4c8",
     fontSize: 12,
-    marginTop: 10,
-    textAlign: "center",
   },
-    gmHiddenRoutePill: {
+  routeHiddenPill: {
     position: "absolute",
     left: 18,
     right: 18,
-    bottom: 88,
-    backgroundColor: "rgba(18,18,18,0.96)",
+    bottom: PANEL_BOTTOM + 10,
+    backgroundColor: COLORS.panel,
     borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    padding: 18,
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
-    elevation: 8,
-  },
-  gmHiddenRouteTitle: {
-    color: "#ffffff",
-    fontWeight: "900",
-    fontSize: 16,
-  },
-  gmHiddenRouteSub: {
-    color: "#9ca3af",
-    fontSize: 12,
-    marginTop: 3,
-  },
-  gmHiddenRouteArrow: {
-    color: "#22c55e",
-    fontSize: 28,
-    fontWeight: "900",
-  },
-  gmHideSheetButton: {
-    alignItems: "center",
-    paddingTop: 12,
-  },
-    gmSuggestionsBox: {
-    backgroundColor: "rgba(8,12,20,0.98)",
-    borderRadius: 16,
+    zIndex: 80,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    marginTop: 8,
-    overflow: "hidden",
-  },
-  gmSuggestionItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
-  },
-  gmSuggestionTitle: {
-    color: "#ffffff",
-    fontWeight: "900",
-    fontSize: 14,
-  },
-  gmSuggestionSub: {
-    color: "#9ca3af",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  gmSuggestionStatus: {
-    color: "#7dd3fc",
-    fontSize: 12,
-    marginTop: 6,
-    fontWeight: "800",
-  },
-    gmUseLocationButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(34,197,94,0.14)",
-    borderColor: "rgba(34,197,94,0.45)",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginTop: 8,
-  },
-  gmUseLocationText: {
-    color: "#86efac",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  
-    loginShell: {
-    flexGrow: 1,
-    paddingHorizontal: 22,
-    paddingTop: 42,
-    paddingBottom: 40,
-    backgroundColor: "#06111f",
-  },
-  loginBrandBlock: {
-    marginBottom: 24,
-  },
-  loginLogoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 34,
-  },
-  logoBubble: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: "#22c55e",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  logoBubbleText: {
-    color: "#03120a",
-    fontWeight: "900",
-    fontSize: 17,
-  },
-  loginLogoText: {
-    color: "#ffffff",
-    fontSize: 34,
-    fontWeight: "900",
-    letterSpacing: -1.5,
-  },
-  loginSubline: {
-    color: "#94a3b8",
-    fontSize: 15,
-    marginTop: 2,
-    fontWeight: "700",
-  },
-  loginHeroTitle: {
-    color: "#ffffff",
-    fontSize: 42,
-    fontWeight: "900",
-    lineHeight: 46,
-    letterSpacing: -1.4,
-  },
-  loginHeroText: {
-    color: "#94a3b8",
-    fontSize: 17,
-    lineHeight: 25,
-    marginTop: 12,
-  },
-  loginHeroCard: {
-    backgroundColor: "rgba(15, 35, 62, 0.96)",
-    borderRadius: 30,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#1f334f",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  loginFieldLabel: {
-    color: "#cbd5e1",
-    fontWeight: "900",
-    marginBottom: 8,
-    marginTop: 10,
-    fontSize: 14,
-  },
-  loginField: {
-    backgroundColor: "#07111f",
-    color: "#ffffff",
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    borderWidth: 1,
-    borderColor: "#263b59",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  loginButton: {
-    backgroundColor: "#22c55e",
-    borderRadius: 22,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginTop: 16,
-  },
-  loginButtonText: {
-    color: "#03120a",
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  quickAccessCard: {
-    backgroundColor: "rgba(15, 28, 46, 0.92)",
-    borderRadius: 26,
-    padding: 16,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: "#1f334f",
-  },
-  quickAccessTitle: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "900",
-    marginBottom: 12,
-  },
-  quickAccountGrid: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  quickAccountButton: {
-    flex: 1,
-    backgroundColor: "#07111f",
-    borderRadius: 18,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#1f334f",
-  },
-  quickAccountButtonActive: {
-    backgroundColor: "#22c55e",
-    borderColor: "#22c55e",
-  },
-  quickAccountRole: {
-    color: "#cbd5e1",
-    fontWeight: "900",
-    fontSize: 13,
-  },
-  quickAccountRoleActive: {
-    color: "#03120a",
-  },
-
-  gmHideSheetText: {
-    color: "#9ca3af",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-    routeCompareTopCard: {
-    position: "absolute",
-    top: 18,
-    left: 16,
-    right: 16,
-    backgroundColor: "rgba(18,18,18,0.94)",
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  routeCompareTitle: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontWeight: "900",
-  },
-  routeCompareSub: {
-    color: "#cbd5e1",
-    fontSize: 14,
-    marginTop: 4,
-  },
-  routeCompareLegend: {
-    position: "absolute",
-    top: 116,
-    left: 16,
-    backgroundColor: "rgba(18,18,18,0.88)",
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  routeLegendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  routeLegendSelected: {
-    width: 24,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: "#2563eb",
-  },
-  routeLegendAlt: {
-    width: 24,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: "#6b7280",
-  },
-  routeLegendText: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: "800",
+    borderColor: COLORS.borderStrong,
   },
   routeCompareSheet: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 74,
-    backgroundColor: "rgba(18,18,18,0.98)",
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingHorizontal: 16,
+    bottom: PANEL_BOTTOM,
+    backgroundColor: COLORS.panel,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 18,
     paddingTop: 10,
+    zIndex: 80,
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.18)",
+  },
+  routeCompareSheetCollapsed: {
     paddingBottom: 16,
+  },
+  routeCompareSheetExpanded: {
+    paddingBottom: 22,
   },
   routeCompareHeader: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
     marginBottom: 10,
   },
-  routeCompareSheetTitle: {
-    color: "#ffffff",
-    fontSize: 20,
+  routeCompareTitle: {
+    color: COLORS.text,
+    fontSize: 25,
     fontWeight: "900",
   },
-  routeCompareSheetSub: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 2,
+  routeCompareSub: {
+    color: COLORS.muted,
+    fontSize: 13,
+    marginTop: 3,
+    fontWeight: "700",
   },
   routeCountPill: {
-    color: "#03120a",
-    backgroundColor: "#22c55e",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: COLORS.green,
     borderRadius: 999,
-    fontSize: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  routeCountText: {
+    color: COLORS.black,
     fontWeight: "900",
-    overflow: "hidden",
   },
   compactRouteList: {
-    gap: 8,
+    gap: 10,
   },
   compactRouteCard: {
-    backgroundColor: "#111827",
-    borderRadius: 18,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 13,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderColor: COLORS.border,
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
   },
   compactRouteCardActive: {
-    backgroundColor: "#123458",
-    borderColor: "#2563eb",
+    backgroundColor: "#0c2f4a",
+    borderColor: COLORS.cyan,
   },
   compactRouteLeft: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
-    marginRight: 10,
+    gap: 10,
   },
   compactRouteDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#6b7280",
-    marginRight: 10,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#64748b",
   },
   compactRouteDotActive: {
-    backgroundColor: "#2563eb",
+    backgroundColor: COLORS.cyan,
   },
   compactRouteTitleRow: {
     flexDirection: "row",
@@ -2865,151 +4325,651 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   compactRouteName: {
-    color: "#e5e7eb",
-    fontSize: 14,
+    color: COLORS.text,
+    fontSize: 16,
     fontWeight: "900",
     flex: 1,
   },
-  compactRouteNameActive: {
-    color: "#ffffff",
-  },
   compactRouteReason: {
-    color: "#94a3b8",
-    fontSize: 11,
+    color: COLORS.muted,
+    fontSize: 12,
     marginTop: 3,
+    fontWeight: "700",
+  },
+  bestPill: {
+    backgroundColor: COLORS.green,
+    color: COLORS.black,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    overflow: "hidden",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  selectedPill: {
+    backgroundColor: "#7dd3fc",
+    color: COLORS.black,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    overflow: "hidden",
+    fontSize: 11,
+    fontWeight: "900",
   },
   compactRouteStats: {
     alignItems: "flex-end",
-    minWidth: 70,
+    marginLeft: 10,
   },
   compactEta: {
-    color: "#ffffff",
-    fontSize: 18,
+    color: COLORS.text,
+    fontSize: 20,
     fontWeight: "900",
   },
   compactDistance: {
-    color: "#94a3b8",
-    fontSize: 12,
+    color: COLORS.muted,
+    fontWeight: "900",
     marginTop: 2,
-    fontWeight: "800",
   },
-  compactBestPill: {
-    color: "#03120a",
-    backgroundColor: "#22c55e",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 999,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-  },
-  compactSelectedPill: {
-    color: "#03120a",
-    backgroundColor: "#7dd3fc",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 999,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-  },
-  routeCompareActionRow: {
+  routeActionRow: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 12,
+    gap: 12,
+    marginTop: 14,
   },
   routeBackButton: {
-    flex: 0.8,
+    flex: 1,
+    borderColor: COLORS.cyan,
     borderWidth: 1,
-    borderColor: "#38bdf8",
-    borderRadius: 20,
-    paddingVertical: 14,
+    borderRadius: 18,
     alignItems: "center",
+    paddingVertical: 14,
+    backgroundColor: COLORS.cyanSoft,
   },
   routeBackText: {
     color: "#7dd3fc",
     fontWeight: "900",
+    fontSize: 16,
   },
   routeUseButton: {
-    flex: 1.4,
-    backgroundColor: "#22c55e",
-    borderRadius: 20,
-    paddingVertical: 14,
+    flex: 1.6,
+    backgroundColor: COLORS.green,
+    borderRadius: 18,
     alignItems: "center",
+    paddingVertical: 14,
   },
   routeUseText: {
-    color: "#03120a",
-    fontWeight: "900",
-  },
-    routeCompareSheetCollapsed: {
-    maxHeight: 260,
-    overflow: "hidden",
-  },
-  routeCompareSheetExpanded: {
-    maxHeight: 520,
-    overflow: "hidden",
-  },
-  routeSheetHandleArea: {
-    alignItems: "center",
-    paddingBottom: 8,
-  },
-  routeSheetHint: {
-    color: "#94a3b8",
-    fontSize: 11,
-    fontWeight: "800",
-    marginTop: -8,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  routeCountPillButton: {
-    backgroundColor: "#22c55e",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  routeCountPillText: {
-    color: "#03120a",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  routeHiddenPill: {
-    position: "absolute",
-    left: 18,
-    right: 18,
-    bottom: 88,
-    backgroundColor: "rgba(18,18,18,0.96)",
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    elevation: 8,
-  },
-  routeHiddenTitle: {
-    color: "#ffffff",
+    color: COLORS.black,
     fontWeight: "900",
     fontSize: 16,
   },
-  routeHiddenSub: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 3,
+
+  driveTopBanner: {
+    position: "absolute",
+    top: 12,
+    left: 14,
+    right: 14,
+    backgroundColor: "rgba(0,107,97,0.96)",
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    zIndex: 90,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: "rgba(103,232,249,0.22)",
   },
-  routeHiddenArrow: {
-    color: "#22c55e",
-    fontSize: 28,
+  driveTurnIcon: {
+    width: 62,
+    height: 62,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  driveTurnIconText: {
+    color: COLORS.white,
+    fontSize: 38,
     fontWeight: "900",
   },
-  routeHideSheetButton: {
-    alignItems: "center",
-    paddingTop: 10,
+  driveDistanceText: {
+    color: "#d1fae5",
+    fontSize: 17,
+    fontWeight: "900",
   },
-  routeHideSheetText: {
-    color: "#94a3b8",
+  driveInstructionText: {
+    color: COLORS.white,
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  driveAudioButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  driveAudioText: {
+    fontSize: 23,
+  },
+  driveNextBanner: {
+    position: "absolute",
+    top: 130,
+    left: 14,
+    backgroundColor: "rgba(0,91,85,0.96)",
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    maxWidth: width * 0.82,
+    gap: 8,
+    zIndex: 85,
+    elevation: 10,
+  },
+  driveThenText: {
+    color: COLORS.white,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  driveNextIcon: {
+    color: COLORS.white,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  driveNextText: {
+    color: "#d1fae5",
+    fontSize: 14,
+    fontWeight: "800",
+    flexShrink: 1,
+  },
+  previewBadge: {
+    position: "absolute",
+    top: 192,
+    left: 14,
+    right: 14,
+    backgroundColor: "rgba(15,23,42,0.9)",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    zIndex: 80,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  previewBadgeText: {
+    color: COLORS.text,
     fontSize: 12,
     fontWeight: "800",
+    textAlign: "center",
+  },
+  driveFloatingControls: {
+    position: "absolute",
+    right: 14,
+    top: height * 0.36,
+    gap: 10,
+    alignItems: "flex-end",
+    zIndex: 75,
+  },
+  driveCircleButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+  },
+  driveCircleText: {
+    color: COLORS.black,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  driveReportButton: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 999,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+  },
+  driveReportText: {
+    color: COLORS.black,
+    fontWeight: "900",
+    fontSize: 14,
+  },
+  driveBottomBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingTop: 10,
+    paddingBottom: 14 + SAFE_BOTTOM,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    zIndex: 90,
+  },
+  driveExitButton: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2,
+    borderColor: "#9ca3af",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  driveExitText: {
+    color: "#111827",
+    fontSize: 36,
+    fontWeight: "900",
+  },
+  driveBottomCenter: {
+    alignItems: "center",
+    flex: 1,
+  },
+  driveBottomEta: {
+    color: "#111827",
+    fontSize: 30,
+    fontWeight: "900",
+  },
+  driveBottomSub: {
+    color: "#6b7280",
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 0,
+    paddingHorizontal: 10,
+    maxWidth: width - 160,
+  },
+  driveRouteButton: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2,
+    borderColor: "#9ca3af",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  driveRouteText: {
+    color: "#111827",
+    fontSize: 32,
+    fontWeight: "900",
+  },
+  vehicleMarker: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: COLORS.blue,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: COLORS.white,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  vehicleMarkerText: {
+    color: COLORS.white,
+    fontSize: 24,
+    fontWeight: "900",
+    transform: [{ rotate: "-90deg" }],
+  },
+  incidentMarker: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.red,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  incidentMarkerText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    fontSize: 20,
+  },
+
+  bottomTabs: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: TAB_HEIGHT,
+    backgroundColor: COLORS.panel,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    paddingHorizontal: 10,
+    paddingBottom: SAFE_BOTTOM,
+    zIndex: 100,
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.12)",
+  },
+  bottomTab: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 18,
+    minWidth: 78,
+    alignItems: "center",
+  },
+  bottomTabActive: {
+    backgroundColor: COLORS.greenSoft,
+  },
+  bottomTabText: {
+    color: COLORS.muted,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  bottomTabTextActive: {
+    color: COLORS.green,
+  },
+
+  commandHero: {
+    backgroundColor: COLORS.panel2,
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+  },
+  pageKicker: {
+    color: COLORS.cyan,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.3,
+  },
+  pageTitle: {
+    color: COLORS.text,
+    fontSize: 32,
+    fontWeight: "900",
+    marginTop: 6,
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  commandText: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "700",
+  },
+  opsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
+  },
+  opsTile: {
+    width: (width - 44) / 2,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  opsTileLabel: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  opsTileValue: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: "900",
+    marginTop: 7,
+  },
+  opsTileSub: {
+    color: "#7dd3fc",
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 5,
+  },
+  parkingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
+  },
+  parkingBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  parkingBadgeText: {
+    fontWeight: "900",
+    fontSize: 18,
+  },
+  parkingName: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  parkingPercent: {
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
+  muted: {
+    color: COLORS.muted,
+    fontSize: 14,
+    marginTop: 4,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
+  metricsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  metric: {
+    flex: 1,
+    backgroundColor: "#0b1626",
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  metricLabel: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  metricValue: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "900",
+    marginTop: 6,
+  },
+  selectedText: {
+    color: "#7dd3fc",
+    marginTop: 10,
+    fontWeight: "900",
+  },
+  routeSummaryName: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  dangerButton: {
+    backgroundColor: COLORS.red,
+    borderRadius: 18,
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  dangerButtonText: {
+    color: "#160303",
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  emptyCard: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: PANEL_BOTTOM + 28,
+    backgroundColor: COLORS.panel,
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+  },
+  emptyTitle: {
+    color: COLORS.text,
+    fontSize: 26,
+    fontWeight: "900",
+  },
+  emptyText: {
+    color: COLORS.muted,
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  primaryWide: {
+    backgroundColor: COLORS.green,
+    borderRadius: 18,
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 16,
+  },
+
+  modalShade: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.52)",
+    justifyContent: "flex-end",
+  },
+  reportSheet: {
+    backgroundColor: COLORS.panel2,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 18,
+    paddingBottom: 30 + SAFE_BOTTOM,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+  },
+  reportHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  reportTitle: {
+    color: COLORS.text,
+    fontSize: 25,
+    fontWeight: "900",
+  },
+  reportClose: {
+    color: "#cbd5e1",
+    fontSize: 32,
+    fontWeight: "700",
+  },
+  reportGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  reportItem: {
+    width: "30%",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  reportIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(148,163,184,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportIconText: {
+    fontSize: 27,
+  },
+  reportLabel: {
+    color: "#e5e7eb",
+    fontWeight: "900",
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: "center",
+  },
+
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(3,7,18,0.62)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 300,
+  },
+  loadingText: {
+    color: COLORS.text,
+    marginTop: 10,
+    fontWeight: "900",
+  },
+  errorToast: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    top: SAFE_TOP + 14,
+    backgroundColor: COLORS.red,
+    borderRadius: 16,
+    padding: 14,
+    zIndex: 400,
+    elevation: 20,
+  },
+  errorText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  toast: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: TAB_HEIGHT + 10,
+    backgroundColor: COLORS.panel2,
+    borderRadius: 16,
+    padding: 14,
+    zIndex: 390,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+  },
+  toastText: {
+    color: COLORS.text,
+    fontWeight: "900",
+    textAlign: "center",
   },
 });
