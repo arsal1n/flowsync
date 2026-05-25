@@ -24,6 +24,16 @@ const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://flowsync-ox5z.onrender.com";
 
 const DEMO_PASSWORD = "flowsync123";
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+const PASSWORD_RULES_TEXT =
+  "Password must be at least 8 characters and include one letter and one number.";
+
+const GUEST_USER = {
+  name: "Guest Driver",
+  email: "guest@flowsync.local",
+  role: "guest",
+};
 
 /*
   Keep this false for real testing.
@@ -807,10 +817,18 @@ export default function App() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
 
-  const [email, setEmail] = useState("driver@flowsync.local");
-  const [password, setPassword] = useState(DEMO_PASSWORD);
-  const [token, setToken] = useState("");
-  const [user, setUser] = useState(null);
+  const [authMode, setAuthMode] = useState("login");
+
+const [email, setEmail] = useState("driver@flowsync.local");
+const [password, setPassword] = useState(DEMO_PASSWORD);
+
+const [signupName, setSignupName] = useState("");
+const [signupEmail, setSignupEmail] = useState("");
+const [signupPassword, setSignupPassword] = useState("");
+const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
+
+const [token, setToken] = useState("");
+const [user, setUser] = useState(null);
 
   const [startLocation, setStartLocation] = useState(DEFAULT_START_PLACE.name);
   const [destination, setDestination] = useState(DEFAULT_DESTINATION_PLACE.name);
@@ -1149,45 +1167,7 @@ export default function App() {
     lastSpokenStepRef.current = -1;
   }
 
-  async function login() {
-    await runAction(async () => {
-      let data = {};
-
-      try {
-        data = await apiRequest("/api/auth/login", {
-          method: "POST",
-          body: JSON.stringify({ email, password }),
-        });
-      } catch {
-        data = {};
-      }
-
-      const nextToken = getTokenDeep(data) || "LOCAL_TOKEN";
-
-      const nextUser =
-        data.user ||
-        data.data?.user ||
-        {
-          name: email.includes("admin")
-            ? "FlowSync Admin"
-            : email.includes("emergency")
-            ? "FlowSync Emergency"
-            : "FlowSync Driver",
-          email,
-          role: email.includes("admin")
-            ? "admin"
-            : email.includes("emergency")
-            ? "emergency"
-            : "driver",
-        };
-
-      setToken(nextToken);
-      setUser(nextUser);
-      setScreen("home");
-      refreshOperationsData();
-    });
-  }
-
+  
   async function refreshOperationsData() {
     const [dashboard, analytics, alertsData, saved, prefs] = await Promise.all([
       optionalApiRequest("/api/dashboard/summary"),
@@ -1217,9 +1197,168 @@ export default function App() {
     }
   }
 
-  function chooseQuickAccount(account) {
+    function isValidEmail(value) {
+    return EMAIL_REGEX.test(String(value || "").trim());
+  }
+
+  function isValidPassword(value) {
+    const clean = String(value || "");
+    return clean.length >= 8 && /[A-Za-z]/.test(clean) && /\d/.test(clean);
+  }
+
+  function roleFromEmail(value) {
+    const clean = String(value || "").toLowerCase();
+
+    if (clean.includes("admin")) return "admin";
+    if (clean.includes("emergency")) return "emergency";
+    return "driver";
+  }
+
+  function nameFromRole(role) {
+    if (role === "admin") return "FlowSync Admin";
+    if (role === "emergency") return "FlowSync Emergency";
+    if (role === "guest") return "Guest Driver";
+    return "FlowSync Driver";
+  }
+
+  function buildLocalUser(nextEmail, nextRole = null, nextName = null) {
+    const role = nextRole || roleFromEmail(nextEmail);
+
+    return {
+      name: nextName || nameFromRole(role),
+      email: String(nextEmail || "").trim().toLowerCase(),
+      role,
+    };
+  }
+
+  async function login() {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (!password) {
+      setError("Enter your password.");
+      return;
+    }
+
+    await runAction(async () => {
+      let data = {};
+
+      try {
+        data = await apiRequest("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+          }),
+        });
+      } catch {
+        data = {};
+      }
+
+      const matchedDemo = QUICK_ACCOUNTS.find(
+        (account) => account.email.toLowerCase() === cleanEmail
+      );
+
+      if (!getTokenDeep(data) && !matchedDemo) {
+        throw new Error(
+          "Backend login is not connected for this account yet. Use a demo role, create local account, or continue as guest."
+        );
+      }
+
+      const nextToken = getTokenDeep(data) || "LOCAL_DEMO_TOKEN";
+
+      const nextUser =
+        data.user ||
+        data.data?.user ||
+        buildLocalUser(cleanEmail, matchedDemo?.role?.toLowerCase());
+
+      setToken(nextToken);
+      setUser(nextUser);
+      setScreen("home");
+      showToast(`Signed in as ${nextUser.role}`);
+      refreshOperationsData();
+    });
+  }
+
+  function loginWithDemoAccount(account) {
+    const role = account.role.toLowerCase();
+    const nextUser = buildLocalUser(account.email, role);
+
     setEmail(account.email);
     setPassword(DEMO_PASSWORD);
+    setToken("LOCAL_DEMO_TOKEN");
+    setUser(nextUser);
+    setScreen("home");
+    showToast(`Demo ${account.role} mode`);
+    refreshOperationsData();
+  }
+
+  function chooseQuickAccount(account) {
+    Alert.alert(
+      `Continue as ${account.role}?`,
+      `This opens the predefined ${account.role} account for testing.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          onPress: () => loginWithDemoAccount(account),
+        },
+      ]
+    );
+  }
+
+  function createLocalAccount() {
+    const cleanName = signupName.trim();
+    const cleanEmail = signupEmail.trim().toLowerCase();
+
+    if (cleanName.length < 2) {
+      setError("Enter your full name.");
+      return;
+    }
+
+    if (!isValidEmail(cleanEmail)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (!isValidPassword(signupPassword)) {
+      setError(PASSWORD_RULES_TEXT);
+      return;
+    }
+
+    if (signupPassword !== signupConfirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    const nextUser = buildLocalUser(cleanEmail, "driver", cleanName);
+
+    setToken("LOCAL_CREATED_ACCOUNT_TOKEN");
+    setUser(nextUser);
+    setScreen("home");
+
+    showToast(
+      "Account created locally. Email verification will be enabled when backend email service is connected."
+    );
+  }
+
+  function continueAsGuest() {
+    setToken("GUEST_TOKEN");
+    setUser(GUEST_USER);
+    setScreen("home");
+    showToast("Guest mode: route search and navigation only.");
+  }
+
+  function forgotPassword() {
+    Alert.alert(
+      "Password reset",
+      "Password reset requires backend email service. The frontend is ready, and this can be connected when the backend endpoint is available.",
+      [{ text: "OK" }]
+    );
   }
 
   function logout() {
@@ -2126,6 +2265,8 @@ export default function App() {
   }
 
   function renderLogin() {
+    const isSignup = authMode === "signup";
+
     return (
       <ScrollView
         contentContainerStyle={styles.loginShell}
@@ -2142,86 +2283,195 @@ export default function App() {
           </View>
         </View>
 
-        <View style={styles.loginHeroCard}>
+        <View style={styles.authHeroCard}>
           <View style={styles.heroPillRow}>
-            <Pill label="Live routes" tone="cyan" />
-            <Pill label="Traffic AI" tone="green" />
+            <Pill label="Real app auth" tone="cyan" />
+            <Pill label="Guest ready" tone="green" />
           </View>
 
-          <Text style={styles.loginHeroTitle}>
-            Move through Dubai with city-level intelligence.
+          <Text style={styles.authHeroTitle}>
+            {isSignup ? "Create your FlowSync account." : "Welcome back."}
           </Text>
 
-          <Text style={styles.loginHeroText}>
-            Real road routing, traffic readiness, GPS navigation, audio turn cues,
-            reports, analytics, and parking intelligence.
+          <Text style={styles.authHeroText}>
+            {isSignup
+              ? "Create a driver account now. Email verification is prepared for backend OTP integration later."
+              : "Login with email, use demo role accounts, or continue as guest."}
           </Text>
 
-          <Text style={styles.loginLabel}>Email</Text>
-
-          <TextInput
-            style={styles.loginInput}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            placeholder="driver@flowsync.local"
-            placeholderTextColor={COLORS.faint}
-          />
-
-          <Text style={styles.loginLabel}>Password</Text>
-
-          <TextInput
-            style={styles.loginInput}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="Password"
-            placeholderTextColor={COLORS.faint}
-          />
-
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={login}
-            activeOpacity={0.86}
-          >
-            <Text style={styles.loginButtonText}>Enter FlowSync</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.quickCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.quickTitle}>Quick access</Text>
-            <Text style={styles.quickHint}>Demo roles</Text>
-          </View>
-
-          {QUICK_ACCOUNTS.map((account) => (
+          <View style={styles.authModeTabs}>
             <TouchableOpacity
-              key={account.email}
               style={[
-                styles.quickAccount,
-                email === account.email ? styles.quickAccountActive : null,
+                styles.authModeTab,
+                authMode === "login" ? styles.authModeTabActive : null,
               ]}
-              onPress={() => chooseQuickAccount(account)}
+              onPress={() => setAuthMode("login")}
               activeOpacity={0.86}
             >
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.quickRole,
-                    email === account.email ? styles.quickRoleActive : null,
-                  ]}
-                >
-                  {account.role}
-                </Text>
-
-                <Text style={styles.quickDescription}>{account.description}</Text>
-                <Text style={styles.quickEmail}>{account.email}</Text>
-              </View>
-
-              <Text style={styles.quickChevron}>›</Text>
+              <Text
+                style={[
+                  styles.authModeText,
+                  authMode === "login" ? styles.authModeTextActive : null,
+                ]}
+              >
+                Login
+              </Text>
             </TouchableOpacity>
-          ))}
+
+            <TouchableOpacity
+              style={[
+                styles.authModeTab,
+                authMode === "signup" ? styles.authModeTabActive : null,
+              ]}
+              onPress={() => setAuthMode("signup")}
+              activeOpacity={0.86}
+            >
+              <Text
+                style={[
+                  styles.authModeText,
+                  authMode === "signup" ? styles.authModeTextActive : null,
+                ]}
+              >
+                Create account
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {isSignup ? (
+            <>
+              <Text style={styles.loginLabel}>Full name</Text>
+              <TextInput
+                style={styles.loginInput}
+                value={signupName}
+                onChangeText={setSignupName}
+                placeholder="Mohd Arsalan"
+                placeholderTextColor={COLORS.faint}
+              />
+
+              <Text style={styles.loginLabel}>Email</Text>
+              <TextInput
+                style={styles.loginInput}
+                value={signupEmail}
+                onChangeText={(text) =>
+                  setSignupEmail(text.replace(/\s/g, "").toLowerCase())
+                }
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="you@example.com"
+                placeholderTextColor={COLORS.faint}
+              />
+
+              <Text style={styles.loginLabel}>Password</Text>
+              <TextInput
+                style={styles.loginInput}
+                value={signupPassword}
+                onChangeText={setSignupPassword}
+                secureTextEntry
+                placeholder="Minimum 8 characters"
+                placeholderTextColor={COLORS.faint}
+              />
+
+              <Text style={styles.loginLabel}>Confirm password</Text>
+              <TextInput
+                style={styles.loginInput}
+                value={signupConfirmPassword}
+                onChangeText={setSignupConfirmPassword}
+                secureTextEntry
+                placeholder="Re-enter password"
+                placeholderTextColor={COLORS.faint}
+              />
+
+              <Text style={styles.authHelperText}>{PASSWORD_RULES_TEXT}</Text>
+
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={createLocalAccount}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.loginButtonText}>Create Account</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.authNote}>
+                Email verification is on hold until backend email/OTP service is connected.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.loginLabel}>Email</Text>
+              <TextInput
+                style={styles.loginInput}
+                value={email}
+                onChangeText={(text) =>
+                  setEmail(text.replace(/\s/g, "").toLowerCase())
+                }
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="driver@flowsync.local"
+                placeholderTextColor={COLORS.faint}
+              />
+
+              <Text style={styles.loginLabel}>Password</Text>
+              <TextInput
+                style={styles.loginInput}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                placeholder="Password"
+                placeholderTextColor={COLORS.faint}
+              />
+
+              <TouchableOpacity
+                style={styles.forgotButton}
+                onPress={forgotPassword}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={login}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.loginButtonText}>Login</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.guestButton}
+                onPress={continueAsGuest}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.guestButtonText}>Continue as Guest</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
+
+        {!isSignup ? (
+          <View style={styles.quickCard}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.quickTitle}>Predefined accounts</Text>
+              <Text style={styles.quickHint}>Demo roles</Text>
+            </View>
+
+            {QUICK_ACCOUNTS.map((account) => (
+              <TouchableOpacity
+                key={account.email}
+                style={styles.quickAccount}
+                onPress={() => chooseQuickAccount(account)}
+                activeOpacity={0.86}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quickRole}>{account.role}</Text>
+                  <Text style={styles.quickDescription}>{account.description}</Text>
+                  <Text style={styles.quickEmail}>{account.email}</Text>
+                </View>
+
+                <Text style={styles.quickChevron}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
     );
   }
@@ -3612,6 +3862,97 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
   },
+    authHeroCard: {
+    backgroundColor: COLORS.panel2,
+    borderRadius: 32,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+    shadowColor: COLORS.cyan,
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 7,
+  },
+  authHeroTitle: {
+    color: COLORS.text,
+    fontSize: 32,
+    lineHeight: 39,
+    fontWeight: "900",
+    letterSpacing: -0.6,
+  },
+  authHeroText: {
+    color: "#cbd5e1",
+    fontSize: 15,
+    lineHeight: 23,
+    marginTop: 10,
+    marginBottom: 16,
+    fontWeight: "700",
+  },
+  authModeTabs: {
+    flexDirection: "row",
+    backgroundColor: "rgba(15,23,42,0.75)",
+    borderRadius: 18,
+    padding: 4,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  authModeTab: {
+    flex: 1,
+    paddingVertical: 11,
+    alignItems: "center",
+    borderRadius: 14,
+  },
+  authModeTabActive: {
+    backgroundColor: COLORS.green,
+  },
+  authModeText: {
+    color: COLORS.muted,
+    fontWeight: "900",
+    fontSize: 14,
+  },
+  authModeTextActive: {
+    color: COLORS.black,
+  },
+  authHelperText: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  authNote: {
+    color: "#7dd3fc",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center",
+    marginTop: 12,
+    lineHeight: 18,
+  },
+  forgotButton: {
+    alignSelf: "flex-end",
+    paddingVertical: 8,
+  },
+  forgotText: {
+    color: "#7dd3fc",
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  guestButton: {
+    borderColor: COLORS.cyan,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 12,
+    backgroundColor: COLORS.cyanSoft,
+  },
+  guestButtonText: {
+    color: "#7dd3fc",
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  
   quickCard: {
     backgroundColor: COLORS.panel2,
     borderRadius: 28,
